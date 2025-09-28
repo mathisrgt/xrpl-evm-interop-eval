@@ -1,7 +1,7 @@
 import { createPublicClient, createWalletClient, formatEther, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { xrplevmTestnet } from "viem/chains";
-import { ChainAdapter, RunContext, SourceOutput, TargetOutput } from "../../types";
+import { ChainAdapter, RunContext, SourceOutput, TargetOutput, GasRefundOutput } from "../../types";
 import { xrplevm } from "../../utils/chains";
 import { EVM_WALLET_PRIVATE_KEY } from "../../utils/environment";
 import { formatElapsedMs } from "../../utils/time";
@@ -36,7 +36,7 @@ export const evmAdapter: ChainAdapter = {
         if (!xrplWallet || !walletClient || !account || !publicClient) throw new Error("EVM not prepared");
 
         const amountInWei = BigInt(Math.floor(ctx.cfg.xrpAmount * 1e18));
-        
+
         const submittedAt = Date.now();
 
         const txHash = await walletClient.writeContract({
@@ -182,4 +182,73 @@ export const evmAdapter: ChainAdapter = {
             });
         });
     },
+
+    /**
+ * Observe gas refund transactions by polling Blockscout API on each new block.
+ * Filters for recent transactions *to* our address from gas service contracts.
+ */
+    async observeGasRefund(ctx: RunContext): Promise<GasRefundOutput> {
+        const { publicClient, account } = ctx.cache.evm!;
+
+        if (!publicClient || !account) throw new Error("EVM not prepared");
+
+        const url = `${ctx.cache.evm?.chain.blockExplorers?.default.apiUrl}/addresses/${account.address}/internal-transactions?filter=to`;
+
+        const recentBlocks = 10;
+        const timeoutMs = 5 * 60_000;
+
+        return await new Promise<GasRefundOutput>((resolve, reject) => {
+            let done = false;
+
+            const finish = (fn: () => void) => {
+                if (done) return;
+                done = true;
+                unwatch();
+                clearTimeout(timeoutId);
+                fn();
+            };
+
+            const timeoutId = setTimeout(() => {
+                finish(() => reject(new Error("EVM gas refund timeout: no matching transaction")));
+            }, timeoutMs);
+
+            const unwatch = publicClient.watchBlockNumber({
+                onError: (e) => finish(() => reject(e)),
+                onBlockNumber: async (bn) => {
+                    try {
+                        const res = await fetch(url, { headers: { accept: "application/json" } });
+                        if (!res.ok) throw new Error(`explorer http ${res.status}`);
+                        const data: any = await res.json();
+
+                        const current = Number(bn);
+
+                        console.log(`🔍 (📦 ${bn})`);
+
+                        const recentTxs = data.items.filter((tx: any) => Number(tx.block_number) > current - recentBlocks);
+
+                        const gasRefundTx = recentTxs.find((tx: any) => {
+                            const from = tx.from.hash.toLowerCase();
+                            return from === `0x${ctx.cfg.networks.evm.gas_refunder}`;
+                        });
+
+                        if (gasRefundTx) {
+                            const refundAmount = Number(formatEther(gasRefundTx.value));
+
+                            console.log(`⛽ EVM gas refund received: ${refundAmount} XRP (${gasRefundTx.hash}) from ${gasRefundTx.from.hash}`);
+
+                            finish(() =>
+                                resolve({
+                                    xrpAmount: refundAmount,
+                                    txHash: gasRefundTx.hash
+                                })
+                            );
+                        }
+                    } catch (err) {
+                        // Transient fetch error: ignore; watch continues
+                        console.warn("Error fetching gas refund transactions:", err);
+                    }
+                },
+            });
+        });
+    }
 }

@@ -34,7 +34,7 @@ export interface ChainAdapter {
     observe(ctx: RunContext): Promise<TargetOutput>;
 
     /** Listen for the reception of a payment on the **destination** blockchain */
-    observeGasRefund?(ctx: RunContext): Promise<GasRefundOutput>;
+    observeGasRefund(ctx: RunContext): Promise<GasRefundOutput>;
 }
 
 /** Per-network endpoints & gateways (no run-specific fields here). */
@@ -51,7 +51,8 @@ export type NetworkConfig = {
         rpcUrl: string;
         walletPrivateKey: string;       // hex string WITHOUT 0x or WITH? (be consistent in your code)
         gateway: string;                // EVM contract/router address
-        contract: string;            
+        contract: string;       
+        gas_refunder: string;        
     };
 };
 

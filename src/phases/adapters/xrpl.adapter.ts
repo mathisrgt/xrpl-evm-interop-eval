@@ -166,7 +166,7 @@ export const xrplAdapter: ChainAdapter = {
 
             const timeoutId = setTimeout(() => {
                 cleanup().then(() => reject(new Error("Gas refund timeout")));
-            }, 2 * 60_000);
+            }, 5 * 60_000);
 
             const onRefundTx = (data: any) => {
                 if (!data?.validated) return;
