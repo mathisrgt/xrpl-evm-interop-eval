@@ -1,5 +1,3 @@
-// time.ts
-
 /**
  * Format an elapsed duration (in milliseconds) as "MMm SSs" or "HHh MMm SSs".
  *
@@ -32,4 +30,43 @@ export function formatElapsedMs(
   return opts.includeHours && h > 0
     ? `${pad(h)}h ${pad(m)}m ${pad(s)}s`
     : `${pad(m)}m ${pad(s)}s`;
+}
+
+/**
+ * Wait for specified duration with animated countdown display
+ * 
+ * @param ms - Duration to wait in milliseconds
+ * @param message - Optional message to display before countdown (default: "Waiting")
+ * 
+ * @example
+ * await waitWithCountdown(5000, "Gas refund timeout");
+ */
+export async function waitWithCountdown(
+  ms: number, 
+  message: string = "Waiting"
+): Promise<void> {
+  const startTime = Date.now();
+  const endTime = startTime + ms;
+  
+  return new Promise((resolve) => {
+    const updateCountdown = () => {
+      const now = Date.now();
+      const remaining = Math.max(0, endTime - now);
+      
+      if (remaining === 0) {
+        process.stdout.write('\r' + ' '.repeat(60) + '\r'); // Clear line
+        resolve();
+        return;
+      }
+      
+      const formattedTime = formatElapsedMs(remaining, { pad: true });
+      const spinner = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧'][Math.floor(now / 125) % 8];
+      
+      process.stdout.write(`\r${spinner} ${message}... ${formattedTime} remaining`);
+      
+      setTimeout(updateCountdown, 100);
+    };
+    
+    updateCountdown();
+  });
 }

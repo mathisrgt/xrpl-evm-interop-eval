@@ -35,6 +35,8 @@ export const evmAdapter: ChainAdapter = {
 
         if (!xrplWallet || !walletClient || !account || !publicClient) throw new Error("EVM not prepared");
 
+        const amountInWei = BigInt(Math.floor(ctx.cfg.xrpAmount * 1e18));
+        
         const submittedAt = Date.now();
 
         const txHash = await walletClient.writeContract({
@@ -83,7 +85,7 @@ export const evmAdapter: ChainAdapter = {
                 "0xba5a21ca88ef6bba2bfff5088994f90e1077e2a1cc3dcc38bd261f00fce2824f",
                 "xrpl",
                 `0x${Buffer.from(xrplWallet.address).toString("hex")}`,
-                1000000000000000000n,
+                amountInWei,
                 "0x",
                 500000000000000000n,
             ],
@@ -96,14 +98,13 @@ export const evmAdapter: ChainAdapter = {
         // TODO: Handle an abort
 
         const tx = await publicClient.getTransaction({ hash: txHash });
-        const xrpAmount = Number(formatEther(tx.value));
 
         const gasUsed = receipt.gasUsed;
         const effectiveGasPrice = receipt.effectiveGasPrice || 0n;
         const gasFeeWei = gasUsed * effectiveGasPrice;
         const txFee = Number(formatEther(gasFeeWei));
 
-        return { xrpAmount, txHash, submittedAt, txFee };
+        return { xrpAmount: ctx.cfg.xrpAmount, txHash, submittedAt, txFee };
     },
 
     /**
@@ -118,7 +119,7 @@ export const evmAdapter: ChainAdapter = {
         const url = `${ctx.cache.evm?.chain.blockExplorers?.default.apiUrl}/addresses/${account.address}/token-transfers?filter=to`;
 
         const recentBlocks = 10;
-        const timeoutMs = 5 * 60_000;
+        const timeoutMs = 10 * 60_000;
 
         return await new Promise<TargetOutput>((resolve, reject) => {
             let done = false;
@@ -155,7 +156,7 @@ export const evmAdapter: ChainAdapter = {
                         });
 
                         if (txFound) {
-                            const txReceipt = await publicClient.getTransactionReceipt({ 
+                            const txReceipt = await publicClient.getTransactionReceipt({
                                 hash: txFound.transaction_hash
                             });
 

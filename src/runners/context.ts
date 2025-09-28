@@ -1,4 +1,4 @@
-import { RunContext, RunConfig, RunRecord, SourceOutput, TargetOutput } from "../types";
+import { RunContext, RunConfig, RunRecord, SourceOutput, TargetOutput, GasRefundOutput } from "../types";
 
 /**
  * Create a new RunContext with initialized empty state
@@ -48,40 +48,13 @@ export function createRunRecord(
     srcOutput: SourceOutput,
     trgOutput: TargetOutput,
     success: boolean,
+    gasRfdOutput?: GasRefundOutput,
     abortReason?: string
 ): RunRecord {
-    console.log("srcOutput: ", srcOutput);
-    console.log("trgOutput: ", trgOutput);
-
-    // Calculate fees based on direction
-    let sourceFee: number;
-    let targetFee: number;
-    let bridgeFee: number;
-
-    if (ctx.cfg.direction === 'xrpl_to_evm') {
-        // XRPL → EVM: source is XRPL, target is EVM
-        sourceFee = srcOutput.txFee;
-        targetFee = trgOutput.txFee;
-
-        // Bridge fee calculation for XRPL→EVM
-        // The gas allowance is reserved on XRPL side, actual EVM gas fee is deducted
-        bridgeFee = calculateBridgeFee(ctx.cfg, trgOutput.txFee);
-
-    } else {
-        // EVM → XRPL: source is EVM, target is XRPL
-        sourceFee = srcOutput.txFee;
-        targetFee = trgOutput.txFee;
-
-        // Bridge fee calculation for EVM→XRPL
-        // Similar mechanism but reversed
-        bridgeFee = calculateBridgeFee(ctx.cfg, trgOutput.txFee);
-    }
-
-    // Total cost includes all fees plus bridge service fee
-    const totalCost = sourceFee + targetFee + bridgeFee;
-
-    // Amount difference (slippage/loss during bridge)
-    const amountDifference = srcOutput.xrpAmount - trgOutput.xrpAmount;
+    const bridgeFee = calculateBridgeFee(ctx.cfg, trgOutput.txFee);
+    const gasRefund = gasRfdOutput?.xrpAmount || 0;
+    const totalCost = srcOutput.txFee + trgOutput.txFee + bridgeFee - gasRefund;
+    const amountDifference = srcOutput.xrpAmount - trgOutput.xrpAmount - gasRefund;
 
     return {
         runId: ctx.cfg.tag,
@@ -89,8 +62,8 @@ export function createRunRecord(
         timestamps: { ...ctx.ts },
         txs: { ...ctx.txs },
         costs: {
-            sourceFee,
-            targetFee,
+            sourceFee: srcOutput.txFee,
+            targetFee: trgOutput.txFee,
             bridgeFee,
             amountDifference,
             totalCost

@@ -18,6 +18,11 @@ export interface TargetOutput {
     txFee: number;
 }
 
+export interface GasRefundOutput {
+    xrpAmount: number;
+    txHash: string;
+}
+
 export interface ChainAdapter {
     /** One-time client/wallet setup; store handles into ctx.cache */
     prepare(ctx: RunContext): Promise<void>;
@@ -27,6 +32,9 @@ export interface ChainAdapter {
 
     /** Listen for the reception of a payment on the **destination** blockchain */
     observe(ctx: RunContext): Promise<TargetOutput>;
+
+    /** Listen for the reception of a payment on the **destination** blockchain */
+    observeGasRefund?(ctx: RunContext): Promise<GasRefundOutput>;
 }
 
 /** Per-network endpoints & gateways (no run-specific fields here). */
@@ -36,7 +44,8 @@ export type NetworkConfig = {
         wsUrl: string;
         walletSeed: string;             // fill from env for real use
         gateway: string;                // XRPL classic address
-        gas_fee: string;   
+        gas_fee: string;
+        gas_refunder: string;   
     };
     evm: {
         rpcUrl: string;

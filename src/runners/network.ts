@@ -9,7 +9,8 @@ export const NETWORK_CONFIG: Record<NetworkMode, NetworkConfig> = {
       wsUrl: "wss://xrplcluster.com/",
       walletSeed: XRPL_WALLET_SEED,
       gateway: "rfmS3zqrQrka8wVyhXifEeyTwe8AMz2Yhw",
-      gas_fee: "200000"
+      gas_fee: "200000",
+      gas_refunder: ""
     },
     evm: {
       rpcUrl: "https://rpc.xrplevm.org",
@@ -25,7 +26,8 @@ export const NETWORK_CONFIG: Record<NetworkMode, NetworkConfig> = {
       wsUrl: "wss://s.altnet.rippletest.net:51233",
       walletSeed: XRPL_WALLET_SEED,
       gateway: "rNrjh1KGZk2jBR3wPfAQnoidtFFYQKbQn2",
-      gas_fee: "1700000"
+      gas_fee: "1700000",
+      gas_refunder: "raTjWP1DGTRzKCEv2R9ftx71wr1xs8jaau"
     },
     evm: {
       rpcUrl: "https://rpc.testnet.xrplevm.org",

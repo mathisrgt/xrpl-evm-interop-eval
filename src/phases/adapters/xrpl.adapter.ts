@@ -1,5 +1,5 @@
 import { Client, Payment, Wallet, convertStringToHex, dropsToXrp, xrpToDrops } from "xrpl";
-import type { ChainAdapter, RunContext, SourceOutput, TargetOutput } from "../../types";
+import type { ChainAdapter, RunContext, SourceOutput, TargetOutput, GasRefundOutput } from "../../types";
 import { XRPL_TX_PAYLOAD } from "../../utils/environment";
 import { formatElapsedMs } from "../../utils/time";
 
@@ -73,15 +73,9 @@ export const xrplAdapter: ChainAdapter = {
         return { xrpAmount: ctx.cfg.xrpAmount, txHash, submittedAt, txFee };
     },
 
-    /**
-   * Observe inbound Payment to this wallet and resolve on first match.
-   * Uses polling via account_tx for robustness and simple filtering.
-   */
     async observe(ctx: RunContext): Promise<TargetOutput> {
         const { client, wallet } = ctx.cache.xrpl ?? {};
         if (!client || !wallet) throw new Error("XRPL not prepared");
-
-        const startAt = Date.now();
 
         return await new Promise<TargetOutput>((resolve, reject) => {
             let finished = false;
@@ -91,47 +85,116 @@ export const xrplAdapter: ChainAdapter = {
                 finished = true;
                 clearTimeout(timeoutId);
                 client.off("transaction", onTx);
-                await client.request({ command: "unsubscribe", accounts: [wallet.address] });
-                await client.disconnect();
+                try {
+                    await client.request({ command: "unsubscribe", accounts: [wallet.address] });
+                } catch (err) {
+                    console.warn("Failed to unsubscribe from XRPL:", err);
+                }
             };
 
             const timeoutId = setTimeout(() => {
-                cleanup().then(() => reject(new Error("❌⌛️ Timeout: no matching payment on XRPL")));
-            }, 5 * 60_000);
+                cleanup().then(() => reject(new Error("⌛️ Timeout: no matching payment on XRPL")));
+            }, 10 * 60_000);
 
             const onTx = (data: any) => {
-                // Only consider validated ledgers
-                if (!data?.validated) return;
+                // console.log("new tx!: ", data);
 
-                const tx = data?.transaction;
-                const meta = data?.meta;
-                if (!tx || tx.TransactionType !== "Payment") return;
-                if (tx.Destination !== wallet.address) return;
+                try {
+                    // Only consider validated ledgers
+                    if (!data?.validated) return;
 
-                // Delivered amount (drops) → XRP
-                const delivered = meta?.delivered_amount ?? tx?.Amount;
-                const deliveredXrp = Number(dropsToXrp(delivered));
+                    const tx = data?.tx_json;
+                    const meta = data?.meta;
+                    if (!tx || tx.TransactionType !== "Payment") return;
+                    if (tx.Destination !== wallet.address) return;
 
-                const finalizedAt = Date.now();
+                    console.log(`📦 Received payment: ${data.hash} from ${tx.Account}`);
 
-                const txFee = Number(dropsToXrp(tx.result.tx_json.Fee));
+                    const delivered = meta?.delivered_amount;
+                    const deliveredXrp = Number(dropsToXrp(delivered));
 
-                cleanup().then(() =>
-                    resolve({
-                        xrpAmount: deliveredXrp,
-                        txHash: tx.hash,
-                        finalizedAt,
-                        txFee
-                    } as TargetOutput)
-                );
+                    const finalizedAt = Date.now();
+
+                    const txFee = Number(dropsToXrp(tx.Fee || "0"));
+
+                    cleanup().then(() =>
+                        resolve({
+                            xrpAmount: deliveredXrp,
+                            txHash: data.hash,
+                            finalizedAt,
+                            txFee
+                        } as TargetOutput)
+                    );
+                } catch (err) {
+                    console.error("Error processing XRPL transaction:", err);
+                    cleanup().then(() => reject(err instanceof Error ? err : new Error(String(err))));
+                }
             };
 
-            // Subscribe then attach listener
+            client.on("transaction", onTx);
+
             client
                 .request({ command: "subscribe", accounts: [wallet.address] })
                 .then(() => {
-                    console.log(`🔔 Subscribed to transactions for ${wallet.address}`);
-                    client.on("transaction", onTx);
+                    console.log(`🔍 Monitoring transactions for ${wallet.address}`);
+                })
+                .catch((err: unknown) => {
+                    console.error("Failed to subscribe to XRPL transactions:", err);
+                    cleanup().then(() => reject(err instanceof Error ? err : new Error(String(err))));
+                });
+        });
+    },
+
+    /** 
+     * Observe gas refund transaction from the bridge refunder contract
+     * This runs after the main bridge transfer is complete
+     */
+    async observeGasRefund(ctx: RunContext): Promise<GasRefundOutput> {
+        const { client, wallet } = ctx.cache.xrpl!;
+        if (!client || !wallet) throw new Error("XRPL not prepared");
+
+        return new Promise((resolve, reject) => {
+            let finished = false;
+
+            const cleanup = async () => {
+                if (finished) return;
+                finished = true;
+                clearTimeout(timeoutId);
+                client.off("transaction", onRefundTx);
+                // Note: Don't unsubscribe here as main client might still be in use
+            };
+
+            const timeoutId = setTimeout(() => {
+                cleanup().then(() => reject(new Error("Gas refund timeout")));
+            }, 2 * 60_000);
+
+            const onRefundTx = (data: any) => {
+                if (!data?.validated) return;
+
+                const tx = data?.tx_json;
+                const meta = data?.meta;
+
+                if (!tx || tx.TransactionType !== "Payment") return;
+                if (tx.Destination !== wallet.address) return;
+                if (tx.Account !== ctx.cfg.networks.xrpl.gas_refunder) return;
+
+                const refundAmount = Number(dropsToXrp(meta?.delivered_amount ?? tx?.Amount));
+
+                console.log(`⛽ Gas refund received: ${refundAmount} XRP from ${tx.Account}`);
+
+                cleanup().then(() =>
+                    resolve({
+                        xrpAmount: refundAmount,
+                        txHash: data.hash
+                    })
+                );
+            };
+
+            client
+                .request({ command: "subscribe", accounts: [wallet.address] })
+                .then(() => {
+                    console.log(`🔍 Monitoring transactions for ${wallet.address}`);
+                    client.on("transaction", onRefundTx);
                 })
                 .catch((err: unknown) => {
                     cleanup().then(() => reject(err instanceof Error ? err : new Error(String(err))));

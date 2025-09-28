@@ -5,10 +5,11 @@ import { evmAdapter } from "./phases/adapters/evm.adapter";
 import { loadConfig } from "./runners/config";
 import { createRunContext, createRunRecord, updateTimestamp, updateTxHash } from "./runners/context";
 import { saveRecord } from "./utils/fsio";
+import { waitWithCountdown } from "./utils/time";
 
 async function main() {
     const cfg = await showMenu();
-    
+
     logStep("configuration");
     logConfig(cfg);
 
@@ -23,19 +24,32 @@ async function main() {
 
         logStep("submit");
         updateTimestamp(ctx, 't1_submit');
-        const srcOutput = await xrplAdapter.submit(ctx);
+        // const srcOutput = await xrplAdapter.submit(ctx);
+        const srcOutput = await evmAdapter.submit(ctx);
         updateTxHash(ctx, 'sourceTxHash', srcOutput.txHash);
         logSubmit(ctx, srcOutput);
 
-        logStep("observe");
+        await waitWithCountdown(60000, "Bridge being performed...");
+
+        logStep(`observe`);
         updateTimestamp(ctx, 't2_observe', srcOutput.submittedAt);
-        const trgOutput = await evmAdapter.observe(ctx);
+        // const trgOutput = await evmAdapter.observe(ctx);
+        const trgOutput = await xrplAdapter.observe(ctx);
         updateTxHash(ctx, 'targetTxHash', trgOutput.txHash);
         updateTimestamp(ctx, 't3_finalize', trgOutput.finalizedAt);
         logObserve(ctx, trgOutput);
 
+        // await waitWithCountdown(10000, "Waiting for gas refund transaction...");
+
+        // let gasRfdOutput;
+        // if (xrplAdapter.observeGasRefund) {
+        //     logStep("gas refund");
+        //     gasRfdOutput = await xrplAdapter.observeGasRefund(ctx);
+        //     console.log(`Gas refund received: ${gasRfdOutput.xrpAmount} XRP (${gasRfdOutput.txHash})`);
+        // }
+
         logStep("Record")
-        const record = createRunRecord(ctx, srcOutput, trgOutput, true);
+        const record = createRunRecord(ctx, srcOutput, trgOutput, true); //, gasRfdOutput);
         logRecord(record);
         saveRecord(record);
     } catch (err) {
