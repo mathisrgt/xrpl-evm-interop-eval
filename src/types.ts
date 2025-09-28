@@ -70,8 +70,8 @@ export interface RunCosts {
     sourceFee: number | null;
     targetFee: number | null;
     bridgeFee: number | null;
+    totalBridgeCost: number | null;
     totalCost: number | null;
-    amountDifference: number | null;
 }
 
 /** Phase timestamps (ms since epoch). Optional during execution. */

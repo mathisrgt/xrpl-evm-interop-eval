@@ -201,8 +201,8 @@ export function logRecord(record: RunRecord): void {
     if (costs.bridgeFee) {
         console.log(`${chalk.bold('Bridge fee')}: ${chalk.yellow(costs.bridgeFee.toFixed(7))} XRP`);
     }
-    if (costs.amountDifference) {
-        console.log(`${chalk.bold('Amount difference: ')}: ${chalk.yellow(costs.amountDifference.toFixed(7))} XRP`);
+    if (costs.totalBridgeCost) {
+        console.log(`${chalk.bold('Bridge cost')}: ${chalk.yellow(costs.totalBridgeCost.toFixed(7))} XRP`);
     }
     if (costs.totalCost) {
         console.log(`${chalk.bold('Total cost')}: ${chalk.yellow(costs.totalCost.toFixed(4))} XRP`);

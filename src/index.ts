@@ -41,7 +41,7 @@ async function main() {
         await waitWithCountdown(10000, "Waiting for gas refund transaction...");
             
         logStep("gas refund");
-        const gasRfdOutput = await xrplAdapter.observeGasRefund(ctx);
+        const gasRfdOutput = await runner.observeGasRefund(ctx);
         console.log(`Gas refund received: ${gasRfdOutput.xrpAmount} XRP (${gasRfdOutput.txHash})`);
 
         logStep("record")

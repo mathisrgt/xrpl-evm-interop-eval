@@ -1,3 +1,4 @@
+import { dropsToXrp } from "xrpl";
 import { RunContext, RunConfig, RunRecord, SourceOutput, TargetOutput, GasRefundOutput } from "../types";
 
 /**
@@ -25,22 +26,6 @@ export function createRunContext(cfg: RunConfig): RunContext {
 }
 
 /**
- * Calculate bridge fee with refund mechanism
- * 
- * @param cfg - Run configuration containing gas fee allowance
- * @param actualGasFee - Actual gas fee used in XRP
- * @returns Net bridge fee after refund
- */
-function calculateBridgeFee(cfg: RunConfig, actualGasFee: number): number {
-    // Gas fee allowance from config (in XRP)
-    const gasAllowance = Number(cfg.networks.xrpl.gas_fee) / 1000000; // Convert from drops to XRP
-
-    // Bridge keeps the difference if actual fee is less than allowance
-    // If actual fee exceeds allowance, bridge absorbs the extra cost
-    return Math.max(0, gasAllowance - actualGasFee);
-}
-
-/**
  * Create a RunRecord from a completed RunContext
  */
 export function createRunRecord(
@@ -51,10 +36,7 @@ export function createRunRecord(
     gasRfdOutput?: GasRefundOutput,
     abortReason?: string
 ): RunRecord {
-    const bridgeFee = calculateBridgeFee(ctx.cfg, trgOutput.txFee);
     const gasRefund = gasRfdOutput?.xrpAmount || 0;
-    const totalCost = srcOutput.txFee + trgOutput.txFee + bridgeFee - gasRefund;
-    const amountDifference = srcOutput.xrpAmount - trgOutput.xrpAmount - gasRefund;
 
     return {
         runId: ctx.cfg.tag,
@@ -64,9 +46,9 @@ export function createRunRecord(
         costs: {
             sourceFee: srcOutput.txFee,
             targetFee: trgOutput.txFee,
-            bridgeFee,
-            amountDifference,
-            totalCost
+            bridgeFee: srcOutput.xrpAmount - trgOutput.xrpAmount - gasRefund,
+            totalBridgeCost: srcOutput.xrpAmount + srcOutput.txFee - gasRefund - trgOutput.xrpAmount,
+            totalCost: srcOutput.xrpAmount + srcOutput.txFee - gasRefund
         },
         success,
         abort_reason: abortReason,

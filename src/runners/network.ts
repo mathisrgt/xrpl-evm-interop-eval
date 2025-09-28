@@ -28,7 +28,7 @@ export const NETWORK_CONFIG: Record<NetworkMode, NetworkConfig> = {
       walletSeed: XRPL_WALLET_SEED,
       gateway: "rNrjh1KGZk2jBR3wPfAQnoidtFFYQKbQn2",
       gas_fee: "1700000",
-      gas_refunder: "raTjWP1DGTRzKCEv2R9ftx71wr1xs8jaau"
+      gas_refunder: ""
     },
     evm: {
       rpcUrl: "https://rpc.testnet.xrplevm.org",

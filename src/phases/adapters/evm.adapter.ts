@@ -184,9 +184,9 @@ export const evmAdapter: ChainAdapter = {
     },
 
     /**
- * Observe gas refund transactions by polling Blockscout API on each new block.
- * Filters for recent transactions *to* our address from gas service contracts.
- */
+    * Observe gas refund transactions by polling Blockscout API on each new block.
+    * Filters for recent transactions *to* our address from gas service contracts.
+    */
     async observeGasRefund(ctx: RunContext): Promise<GasRefundOutput> {
         const { publicClient, account } = ctx.cache.evm!;
 
@@ -244,7 +244,6 @@ export const evmAdapter: ChainAdapter = {
                             );
                         }
                     } catch (err) {
-                        // Transient fetch error: ignore; watch continues
                         console.warn("Error fetching gas refund transactions:", err);
                     }
                 },

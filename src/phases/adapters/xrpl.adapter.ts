@@ -171,14 +171,16 @@ export const xrplAdapter: ChainAdapter = {
             const onRefundTx = (data: any) => {
                 if (!data?.validated) return;
 
+                console.log("new tx: ", data);
+
                 const tx = data?.tx_json;
                 const meta = data?.meta;
 
                 if (!tx || tx.TransactionType !== "Payment") return;
                 if (tx.Destination !== wallet.address) return;
-                if (tx.Account !== ctx.cfg.networks.xrpl.gas_refunder) return;
+                // if (tx.Account !== ctx.cfg.networks.xrpl.gas_refunder) return;
 
-                const refundAmount = Number(dropsToXrp(meta?.delivered_amount ?? tx?.Amount));
+                const refundAmount = Number(dropsToXrp(meta?.delivered_amount));
 
                 console.log(`⛽ Gas refund received: ${refundAmount} XRP from ${tx.Account}`);
 
