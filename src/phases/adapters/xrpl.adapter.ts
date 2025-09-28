@@ -114,11 +114,14 @@ export const xrplAdapter: ChainAdapter = {
 
                 const finalizedAt = Date.now();
 
+                const txFee = Number(dropsToXrp(tx.result.tx_json.Fee));
+
                 cleanup().then(() =>
                     resolve({
                         xrpAmount: deliveredXrp,
                         txHash: tx.hash,
                         finalizedAt,
+                        txFee
                     } as TargetOutput)
                 );
             };

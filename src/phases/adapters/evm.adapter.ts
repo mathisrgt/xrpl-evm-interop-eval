@@ -112,14 +112,14 @@ export const evmAdapter: ChainAdapter = {
     */
     async observe(ctx: RunContext): Promise<TargetOutput> {
         const { publicClient, account } = ctx.cache.evm!;
-        
+
         if (!publicClient || !account) throw new Error("EVM not prepared");
-        
+
         const url = `${ctx.cache.evm?.chain.blockExplorers?.default.apiUrl}/addresses/${account.address}/token-transfers?filter=to`;
-        
+
         const recentBlocks = 10;
         const timeoutMs = 5 * 60_000;
-        
+
         return await new Promise<TargetOutput>((resolve, reject) => {
             let done = false;
 
@@ -144,7 +144,7 @@ export const evmAdapter: ChainAdapter = {
                         const data: any = await res.json();
 
                         const current = Number(bn);
-                        
+
                         console.log(`🔍 (📦 ${bn})`);
 
                         const recentTxs = data.items.filter((tx: any) => Number(tx.block_number) > current - recentBlocks);
@@ -155,11 +155,21 @@ export const evmAdapter: ChainAdapter = {
                         });
 
                         if (txFound) {
+                            const txReceipt = await publicClient.getTransactionReceipt({ 
+                                hash: txFound.transaction_hash
+                            });
+
+                            const gasUsed = txReceipt.gasUsed;
+                            const effectiveGasPrice = txReceipt.effectiveGasPrice;
+                            const gasFeeWei = gasUsed * effectiveGasPrice;
+                            const txFee = Number(formatEther(gasFeeWei));
+
                             finish(() =>
                                 resolve({
                                     xrpAmount: Number(formatEther(BigInt(txFound.total.value))),
                                     txHash: txFound.transaction_hash,
                                     finalizedAt: Date.now(),
+                                    txFee
                                 } as TargetOutput)
                             );
                         }

@@ -193,16 +193,19 @@ export function logRecord(record: RunRecord): void {
     // Cost information
     const costs = record.costs;
     if (costs.sourceFee) {
-        console.log(`${chalk.bold('Source fee')}: ${chalk.yellow(costs.sourceFee.toFixed(4))} + ' XRP'`);
+        console.log(`${chalk.bold('Source fee')}: ${chalk.yellow(costs.sourceFee.toFixed(7))} XRP`);
     }
     if (costs.targetFee) {
-        console.log(`${chalk.bold('Target fee')}: ${chalk.yellow(costs.targetFee.toFixed(4))} + ' XRP'`);
+        console.log(`${chalk.bold('Target fee')}: ${chalk.yellow(costs.targetFee.toFixed(7))} XRP`);
     }
     if (costs.bridgeFee) {
-        console.log(`${chalk.bold('Bridge fee')}: ${chalk.yellow(costs.bridgeFee.toFixed(4))} + ' XRP'`);
+        console.log(`${chalk.bold('Bridge fee')}: ${chalk.yellow(costs.bridgeFee.toFixed(7))} XRP`);
+    }
+    if (costs.amountDifference) {
+        console.log(`${chalk.bold('Amount difference: ')}: ${chalk.yellow(costs.amountDifference.toFixed(7))} XRP`);
     }
     if (costs.totalCost) {
-        console.log(`${chalk.bold('Total cost')}: ${chalk.yellow(costs.totalCost.toFixed(4) + ' XRP')}`);
+        console.log(`${chalk.bold('Total cost')}: ${chalk.yellow(costs.totalCost.toFixed(4))} XRP`);
     }
 }
 
