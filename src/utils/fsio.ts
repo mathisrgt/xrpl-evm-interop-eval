@@ -92,7 +92,7 @@ export function recordToCsvRow(record: RunRecord): Record<string, unknown> {
     evm_endpoint: record.cfg.networks.evm.rpcUrl,
     xrpl_gateway: record.cfg.networks.xrpl.gateway,
     evm_gateway: record.cfg.networks.evm.gateway,
-    evm_contract: record.cfg.networks.evm.contract,
+    evm_relayer: record.cfg.networks.evm.relayer,
     
     // Timestamps (milliseconds since epoch)
     t0_prepare: record.timestamps.t0_prepare || null,

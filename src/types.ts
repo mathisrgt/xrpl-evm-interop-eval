@@ -51,7 +51,7 @@ export type NetworkConfig = {
         rpcUrl: string;
         walletPrivateKey: string;       // hex string WITHOUT 0x or WITH? (be consistent in your code)
         gateway: string;                // EVM contract/router address
-        contract: string;       
+        relayer: string;       
         gas_refunder: string;        
     };
 };

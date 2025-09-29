@@ -17,6 +17,7 @@ export const xrplAdapter: ChainAdapter = {
     /** Submit XRPL Payment with optional memos */
     async submit(ctx: RunContext): Promise<SourceOutput> {
         const { client, wallet } = ctx.cache.xrpl!;
+        const { account } = ctx.cache.evm!;
         if (!client || !wallet) throw new Error("XRPL not prepared");
 
         const tx: Payment = {
@@ -33,8 +34,9 @@ export const xrplAdapter: ChainAdapter = {
                 },
                 {
                     Memo: {
-                        MemoType: convertStringToHex("destination_address"), // Target contract on the destination chain
-                        MemoData: convertStringToHex(ctx.cfg.networks.evm.contract)
+                        MemoType: convertStringToHex("destination_address"),
+                        MemoData: convertStringToHex(account.address.slice(2))
+                        // ctx.cfg.networks.evm.relayer
                     }
                 },
                 {
@@ -48,13 +50,13 @@ export const xrplAdapter: ChainAdapter = {
                         MemoType: convertStringToHex("gas_fee_amount"),
                         MemoData: convertStringToHex(ctx.cfg.networks.xrpl.gas_fee)
                     }
-                },
-                {
-                    Memo: {
-                        MemoType: convertStringToHex("payload"),
-                        MemoData: XRPL_TX_PAYLOAD // TODO: REPLACE BY A DETERMINISTIC FUNCTION AND PARAMS
-                    }
-                },
+                }
+                // {
+                //     Memo: {
+                //         MemoType: convertStringToHex("payload"),
+                //         MemoData: XRPL_TX_PAYLOAD // TODO: REPLACE BY A DETERMINISTIC FUNCTION AND PARAMS
+                //     }
+                // },
             ]
         };
 

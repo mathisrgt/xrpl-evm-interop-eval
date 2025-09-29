@@ -152,7 +152,8 @@ export const evmAdapter: ChainAdapter = {
 
                         const txFound = recentTxs.find((tx: any) => {
                             const from = tx.from.hash.toLowerCase();
-                            return from === `0x${ctx.cfg.networks.evm.contract.toLowerCase()}`;
+                            return from === '0x0000000000000000000000000000000000000000';
+                            // return from === `0x${ctx.cfg.networks.evm.relayer.toLowerCase()}`; // with the relayer
                         });
 
                         if (txFound) {

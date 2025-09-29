@@ -79,7 +79,7 @@ export function logConfig(cfg: RunConfig): void {
         ['Runs', chalk.white(cfg.runs.toString())],
         ['XRPL Gateway', formatAddress(cfg.networks.xrpl.gateway, 'xrpl')],
         ['EVM Gateway', formatAddress(cfg.networks.evm.gateway, 'evm', true)],
-        ['EVM Contract', formatAddress(cfg.networks.evm.contract, 'evm', true)],
+        ['EVM Contract', formatAddress(cfg.networks.evm.relayer, 'evm', true)],
     ];
 
     const maxKeyLength = Math.max(...rows.map(([key]) => key.length));
@@ -116,7 +116,7 @@ export function logPrepare(ctx: RunContext): void {
     // Gateway addresses
     console.log(`${chalk.dim('XRPL Gateway')}: ${formatAddress(ctx.cfg.networks.xrpl.gateway, 'xrpl')}`);
     console.log(`${chalk.dim('EVM Gateway')}: ${formatAddress(ctx.cfg.networks.evm.gateway, 'evm', true)}`);
-    console.log(`${chalk.dim('EVM Contract')}: ${formatAddress(ctx.cfg.networks.evm.contract, 'evm', true)}`);
+    console.log(`${chalk.dim('EVM Contract')}: ${formatAddress(ctx.cfg.networks.evm.relayer, 'evm', true)}`);
 
     // Overall status
     const allReady = xrplReady && evmReady;
