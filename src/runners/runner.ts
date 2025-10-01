@@ -1,6 +1,6 @@
 import { ChainAdapter, NetworkDirection, RunContext, SourceOutput, TargetOutput, GasRefundOutput } from "../types";
-import { xrplAdapter } from "../phases/adapters/xrpl.adapter";
-import { evmAdapter } from "../phases/adapters/evm.adapter";
+import { xrplAdapter } from "../adapters/xrpl.adapter";
+import { evmAdapter } from "../adapters/evm.adapter";
 
 /**
  * Runner that abstracts the direction-specific logic

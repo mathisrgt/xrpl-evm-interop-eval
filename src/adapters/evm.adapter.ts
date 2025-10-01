@@ -1,10 +1,10 @@
 import { createPublicClient, createWalletClient, formatEther, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { xrplevmTestnet } from "viem/chains";
-import { ChainAdapter, RunContext, SourceOutput, TargetOutput, GasRefundOutput } from "../../types";
-import { xrplevm } from "../../utils/chains";
-import { EVM_WALLET_PRIVATE_KEY } from "../../utils/environment";
-import { formatElapsedMs } from "../../utils/time";
+import { ChainAdapter, RunContext, SourceOutput, TargetOutput, GasRefundOutput } from "../types";
+import { xrplevm } from "../utils/chains";
+import { EVM_WALLET_PRIVATE_KEY } from "../utils/environment";
+import { formatElapsedMs } from "../utils/time";
 
 export const evmAdapter: ChainAdapter = {
 

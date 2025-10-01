@@ -1,289 +1,192 @@
+// utils/fsio.ts
+//
+// Unified persistence for research artifacts.
+// Writes under data/results/:
+//   - {batchId}.jsonl              : raw RunRecord lines (one per run)
+//   - {batchId}_metrics.json       : MetricsReport (summary + raw arrays)
+//   - {batchId}_metrics.csv        : single-row MetricsSummary for spreadsheets
+//   - all_metrics.csv              : rolling append of all batch summaries
+//
+// Call saveBatchArtifacts(batchId, cfg, records, report) once per batch.
+
 import fs from "node:fs";
 import path from "node:path";
-import { RunRecord } from "../types";
+import type { RunConfig, RunRecord } from "../types";
+import type { MetricsReport, MetricsSummary } from "./metrics";
 
-/**
- * Append a single JSON object to a JSON Lines (JSONL) file.
- */
-export function appendJsonl(file: string, obj: unknown): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.appendFileSync(file, JSON.stringify(obj) + "\n", "utf8");
+/* -------------------------------------------------------------------------- */
+/*                                Path helpers                                */
+/* -------------------------------------------------------------------------- */
+
+export interface SavePaths {
+  dir: string;
+  jsonl: string;
+  metricsJson: string;
+  metricsCsv: string;
+  allCsv: string;
 }
 
-/**
- * Write pretty-printed JSON to a file using an atomic replace.
- */
-export function writeJson(file: string, obj: unknown): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+export function makePaths(batchId: string): SavePaths {
+  const dir = path.join("data", "results");
+  return {
+    dir,
+    jsonl: path.join(dir, `${batchId}.jsonl`),
+    metricsJson: path.join(dir, `${batchId}_metrics.json`),
+    metricsCsv: path.join(dir, `${batchId}_metrics.csv`),
+    allCsv: path.join(dir, "all_metrics.csv"),
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/*                              Low-level writers                             */
+/* -------------------------------------------------------------------------- */
+
+function ensureDir(filePath: string) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+}
+
+/** Append one object as JSONL (one line per record). */
+export function appendJsonl(file: string, obj: unknown) {
+  ensureDir(file);
+  fs.appendFileSync(file, JSON.stringify(obj) + "\n");
+}
+
+/** Write pretty JSON atomically (tmp + rename). */
+export function writeJsonAtomic(file: string, obj: unknown) {
+  ensureDir(file);
   const tmp = file + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(obj, null, 2), "utf8");
+  fs.writeFileSync(tmp, JSON.stringify(obj, null, 2));
   fs.renameSync(tmp, file);
 }
 
-/**
- * Read and parse a JSON file with a typed return.
- */
-export function readJson<T>(file: string): T {
-  return JSON.parse(fs.readFileSync(file, "utf8"));
+/** RFC4180-safe CSV escaping. */
+function csvEscape(v: unknown): string {
+  const s = v == null ? "" : String(v);
+  // quote if contains comma, quote, newline/CR, or leading/trailing spaces
+  const needsQuote = /[",\n\r]/.test(s) || /^\s|\s$/.test(s);
+  const q = s.replace(/"/g, '""');
+  return needsQuote ? `"${q}"` : q;
 }
 
-/**
- * Write an array of homogeneous objects to a CSV file (header included).
- */
-export function writeCsv(file: string, rows: Record<string, unknown>[]): void {
-  if (rows.length === 0) return;
-
+/** Write an array of homogeneous objects to CSV (overwrite). */
+export function writeCsv(file: string, rows: Array<Record<string, unknown>>) {
+  ensureDir(file);
+  if (!rows.length) {
+    fs.writeFileSync(file, "");
+    return;
+  }
   const headers = Object.keys(rows[0]);
-  const escape = (v: unknown) => {
-    const s = String(v ?? "");
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-
-  const lines = [
-    headers.join(","),
-    ...rows.map((r) => headers.map((h) => escape((r as any)[h])).join(",")),
-  ];
-
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, lines.join("\n") + "\n", "utf8");
-}
-
-/**
- * Sanitize RunRecord by removing sensitive data (wallet seeds, private keys)
- */
-function sanitizeRecord(record: RunRecord): RunRecord {
-  return {
-    ...record,
-    cfg: {
-      ...record.cfg,
-      networks: {
-        ...record.cfg.networks,
-        xrpl: {
-          ...record.cfg.networks.xrpl,
-          walletSeed: "[REDACTED]" // Remove sensitive wallet seed
-        },
-        evm: {
-          ...record.cfg.networks.evm,
-          walletPrivateKey: "[REDACTED]" // Remove sensitive private key
-        }
-      }
-    }
-  };
-}
-
-/**
- * Convert RunRecord to a flat CSV row for scientific analysis
- */
-export function recordToCsvRow(record: RunRecord): Record<string, unknown> {
-  return {
-    // Identification
-    runId: record.runId,
-    success: record.success,
-    abort_reason: record.abort_reason || '',
-    
-    // Configuration (excluding sensitive data)
-    network_mode: record.cfg.networks.mode,
-    direction: record.cfg.direction,
-    amount_xrp: record.cfg.xrpAmount,
-    total_runs: record.cfg.runs,
-    
-    // Network endpoints (safe to include)
-    xrpl_endpoint: record.cfg.networks.xrpl.wsUrl,
-    evm_endpoint: record.cfg.networks.evm.rpcUrl,
-    xrpl_gateway: record.cfg.networks.xrpl.gateway,
-    evm_gateway: record.cfg.networks.evm.gateway,
-    evm_relayer: record.cfg.networks.evm.relayer,
-    
-    // Timestamps (milliseconds since epoch)
-    t0_prepare: record.timestamps.t0_prepare || null,
-    t1_submit: record.timestamps.t1_submit || null,
-    t2_observe: record.timestamps.t2_observe || null,
-    t3_finalize: record.timestamps.t3_finalize || null,
-    
-    // Calculated metrics
-    preparation_time_ms: record.timestamps.t1_submit && record.timestamps.t0_prepare ? 
-      record.timestamps.t1_submit - record.timestamps.t0_prepare : null,
-    total_latency_ms: record.timestamps.t3_finalize && record.timestamps.t1_submit ? 
-      record.timestamps.t3_finalize - record.timestamps.t1_submit : null,
-    
-    // Transaction hashes
-    source_tx_hash: record.txs.sourceTxHash || '',
-    target_tx_hash: record.txs.targetTxHash || '',
-    bridge_message_id: record.txs.bridgeMessageId || '',
-    
-    // Costs
-    source_fee: record.costs.sourceFee,
-    target_fee: record.costs.targetFee,
-    bridge_fee: record.costs.bridgeFee,
-    total_bridge_cost: record.costs.totalBridgeCost,
-    total_cost: record.costs.totalCost,
-  };
-}
-
-/**
- * Generate file paths for batch records
- */
-function getBatchFilePaths(record: RunRecord, basePath: string = 'data/results'): { jsonlFile: string; csvFile: string; batchId: string } {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T');
-  const date = timestamp[0]; // YYYY-MM-DD
-  const time = timestamp[1].substring(0, 8); // HH-MM-SS
-  const mode = record.cfg.networks.mode;
-  const direction = record.cfg.direction;
-  
-  const batchId = `${mode}_${direction}_${date}_${time}`;
-  const jsonlFile = path.join(basePath, `${batchId}.jsonl`);
-  const csvFile = path.join(basePath, `${batchId}.csv`);
-  
-  return { jsonlFile, csvFile, batchId };
-}
-
-/**
- * Save a single record (backward compatibility - appends to daily file)
- */
-export function saveRecord(record: RunRecord, basePath: string = 'data/results'): void {
-  const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-  const mode = record.cfg.networks.mode;
-  const direction = record.cfg.direction;
-  
-  const jsonlFile = path.join(basePath, `${mode}_${direction}_${timestamp}.jsonl`);
-  const csvFile = path.join(basePath, `${mode}_${direction}_${timestamp}.csv`);
-  
-  // Sanitize record before saving
-  const sanitizedRecord = sanitizeRecord(record);
-  
-  // Save sanitized record to JSONL
-  appendJsonl(jsonlFile, sanitizedRecord);
-  
-  // Convert to CSV format and append
-  const csvRow = recordToCsvRow(record);
-  appendCsvRow(csvFile, csvRow);
-}
-
-/**
- * Save a batch of records to a single timestamped file
- * Returns the batch ID for reference
- */
-export function saveBatchRecords(records: RunRecord[], basePath: string = 'data/results'): string {
-  if (records.length === 0) {
-    throw new Error("Cannot save empty batch");
+  const lines: string[] = [headers.join(",")];
+  for (const row of rows) {
+    lines.push(headers.map((h) => csvEscape(row[h])).join(","));
   }
-  
-  // Use first record to determine file paths (all records in batch share same config)
-  const { jsonlFile, csvFile, batchId } = getBatchFilePaths(records[0], basePath);
-  
-  // Ensure directory exists
-  fs.mkdirSync(path.dirname(jsonlFile), { recursive: true });
-  
-  // Save all records to JSONL (one per line)
-  const jsonlContent = records
-    .map(record => JSON.stringify(sanitizeRecord(record)))
-    .join('\n') + '\n';
-  fs.writeFileSync(jsonlFile, jsonlContent, 'utf8');
-  
-  // Save all records to CSV (with header)
-  const csvRows = records.map(record => recordToCsvRow(record));
-  writeCsv(csvFile, csvRows);
-  
-  return batchId;
+  fs.writeFileSync(file, lines.join("\n"));
 }
 
-/**
- * Append a single row to CSV file, creating headers if file doesn't exist
- */
-function appendCsvRow(csvFile: string, row: Record<string, unknown>): void {
-  const fileExists = fs.existsSync(csvFile);
-  
-  if (!fileExists) {
-    // Create file with headers
-    writeCsv(csvFile, [row]);
+/** Append a single CSV row; create file with header if missing. */
+export function appendCsvRow(
+  file: string,
+  headers: string[],
+  row: Record<string, unknown>
+) {
+  ensureDir(file);
+  const exists = fs.existsSync(file);
+  const line = headers.map((h) => csvEscape(row[h])).join(",") + "\n";
+  if (!exists) {
+    fs.writeFileSync(file, headers.join(",") + "\n" + line);
   } else {
-    // Append row without headers
-    const headers = Object.keys(row);
-    const escape = (v: unknown) => {
-      const s = String(v ?? "");
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    
-    const line = headers.map((h) => escape((row as any)[h])).join(",") + "\n";
-    fs.appendFileSync(csvFile, line, "utf8");
+    fs.appendFileSync(file, line);
   }
 }
 
-/**
- * Create a batch summary object with statistics
- */
-export interface BatchSummary {
-  batchId: string;
-  totalRuns: number;
-  successCount: number;
-  failureCount: number;
-  successRate: number;
-  totalDurationMs: number;
-  averageLatencyMs: number | null;
-  averageTotalCost: number | null;
-  averageBridgeCost: number | null;
-  config: {
-    mode: string;
-    direction: string;
-    amount: number;
-    runs: number;
+/* -------------------------------------------------------------------------- */
+/*                           Summary → CSV row mapping                        */
+/* -------------------------------------------------------------------------- */
+
+/** Stable, explicit schema for one-row batch CSV. */
+export function summaryToCsvRow(
+  s: MetricsSummary,
+  cfg: RunConfig
+): Record<string, string | number> {
+  return {
+    timestampIso: s.timestampIso,
+    tag: s.tag,
+    direction: s.direction,
+    amountXrp: s.xrpAmount,
+    runsPlanned: s.runsPlanned,
+
+    totalRuns: s.totalRuns,
+    successCount: s.successCount,
+    failureCount: s.failureCount,
+    successRate_pct: Number((s.successRate * 100).toFixed(2)),
+
+    latency_min_ms: s.latency.minMs ?? "",
+    latency_p50_ms: s.latency.p50Ms ?? "",
+    latency_p90_ms: s.latency.p90Ms ?? "",
+    latency_p95_ms: s.latency.p95Ms ?? "",
+    latency_p99_ms: s.latency.p99Ms ?? "",
+    latency_max_ms: s.latency.maxMs ?? "",
+    latency_mean_ms: s.latency.meanMs ?? "",
+    latency_std_ms: s.latency.stdDevMs ?? "",
+
+    batchDurationMs: s.batchDurationMs ?? "",
+    tps: s.tps ?? "",
+
+    xrplUrl: cfg.networks.xrpl.wsUrl,
+    evmUrl: cfg.networks.evm.rpcUrl,
   };
-  timestamp: string;
 }
 
+/* Keep a fixed header order for reproducibility. */
+export const SUMMARY_CSV_HEADERS: string[] = [
+  "timestampIso",
+  "tag",
+  "direction",
+  "amountXrp",
+  "runsPlanned",
+  "totalRuns",
+  "successCount",
+  "failureCount",
+  "successRate_pct",
+  "latency_min_ms",
+  "latency_p50_ms",
+  "latency_p90_ms",
+  "latency_p95_ms",
+  "latency_p99_ms",
+  "latency_max_ms",
+  "latency_mean_ms",
+  "latency_std_ms",
+  "batchDurationMs",
+  "tps",
+  "xrplUrl",
+  "evmUrl",
+];
+
 /**
- * Generate and save batch summary
+ * Persist everything for a batch in one call.
+ * - Raw records → JSONL
+ * - Metrics report → JSON
+ * - Metrics summary → CSV (single row)
+ * - Append to rolling all_metrics.csv
  */
-export function saveBatchSummary(
+export function saveBatchArtifacts(
   batchId: string,
+  cfg: RunConfig,
   records: RunRecord[],
-  startTime: number,
-  basePath: string = 'data/results'
-): void {
-  const successfulRecords = records.filter(r => r.success);
-  const totalDuration = Date.now() - startTime;
-  
-  // Calculate averages
-  let avgLatency: number | null = null;
-  let avgTotalCost: number | null = null;
-  let avgBridgeCost: number | null = null;
-  
-  if (successfulRecords.length > 0) {
-    avgLatency = successfulRecords.reduce((sum, r) => {
-      const latency = r.timestamps.t3_finalize && r.timestamps.t1_submit
-        ? r.timestamps.t3_finalize - r.timestamps.t1_submit
-        : 0;
-      return sum + latency;
-    }, 0) / successfulRecords.length;
-    
-    avgTotalCost = successfulRecords.reduce((sum, r) => 
-      sum + (r.costs.totalCost || 0), 0
-    ) / successfulRecords.length;
-    
-    avgBridgeCost = successfulRecords.reduce((sum, r) => 
-      sum + (r.costs.totalBridgeCost || 0), 0
-    ) / successfulRecords.length;
-  }
-  
-  const summary: BatchSummary = {
-    batchId,
-    totalRuns: records.length,
-    successCount: successfulRecords.length,
-    failureCount: records.length - successfulRecords.length,
-    successRate: (successfulRecords.length / records.length) * 100,
-    totalDurationMs: totalDuration,
-    averageLatencyMs: avgLatency,
-    averageTotalCost: avgTotalCost,
-    averageBridgeCost: avgBridgeCost,
-    config: {
-      mode: records[0].cfg.networks.mode,
-      direction: records[0].cfg.direction,
-      amount: records[0].cfg.xrpAmount,
-      runs: records[0].cfg.runs
-    },
-    timestamp: new Date().toISOString()
-  };
-  
-  const summaryFile = path.join(basePath, `${batchId}_summary.json`);
-  writeJson(summaryFile, summary);
+  report: MetricsReport
+): SavePaths {
+  const paths = makePaths(batchId);
+
+  // 1) Raw runs as JSONL (one per line)
+  for (const r of records) appendJsonl(paths.jsonl, r);
+
+  // 2) Summary JSON (metrics report)
+  writeJsonAtomic(paths.metricsJson, report);
+
+  // 3) Single-row CSV for the batch + 4) Append to global CSV
+  const row = summaryToCsvRow(report.summary, cfg);
+  writeCsv(paths.metricsCsv, [row]);
+  appendCsvRow(paths.allCsv, SUMMARY_CSV_HEADERS, row);
+
+  return paths;
 }

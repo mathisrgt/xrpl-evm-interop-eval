@@ -79,7 +79,8 @@ export interface RunTimestamps {
     t0_prepare?: number;
     t1_submit?: number;
     t2_observe?: number;
-    t3_finalize?: number;
+    t3_finalized?: number;
+    t4_finalized_gas_refund?: number;
 }
 
 /** Transaction identifiers discovered during the run. */

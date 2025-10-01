@@ -2,9 +2,10 @@ import chalk from "chalk";
 import { createRunContext, createRunRecord, updateTimestamp, updateTxHash } from "./runners/context";
 import { Runner } from "./runners/runner";
 import type { RunRecord } from "./types";
-import { saveBatchRecords, saveBatchSummary } from "./utils/fsio";
-import { displayBatchSummary, logConfig, logError, logObserve, logPrepare, logRecord, logStep, logSubmit, showMenu } from "./utils/logger";
+import { saveBatchArtifacts } from "./utils/fsio";
+import { displayBatchSummary, displayMetrics, logConfig, logError, logObserve, logPrepare, logRecord, logStep, logSubmit, showMenu } from "./utils/logger";
 import { waitWithCountdown } from "./utils/time";
+import { computeMetrics } from "./utils/metrics";
 
 async function main() {
     const cfg = await showMenu();
@@ -12,15 +13,20 @@ async function main() {
     logStep("configuration");
     logConfig(cfg);
 
+    const batchId = [
+        new Date().toISOString().replace(/[:.]/g, "-"),
+        cfg.direction,
+        cfg.tag
+    ].join("_");
+
     const runner = new Runner(cfg.direction);
-    
-    const allRecords: RunRecord[] = [];
+
+    const records: RunRecord[] = [];
     let successCount = 0;
     let failureCount = 0;
     const batchStartTime = Date.now();
 
     try {
-        // Prepare once before all runs
         const ctx = createRunContext(cfg);
         logStep("prepare");
         updateTimestamp(ctx, 't0_prepare');
@@ -30,7 +36,7 @@ async function main() {
         for (let runIndex = 0; runIndex < cfg.runs; runIndex++) {
             const runNumber = runIndex + 1;
             const separator = chalk.bold('═'.repeat(80));
-            
+
             console.log(`\n${separator}`);
             console.log(chalk.bold.cyan(`🔄 RUN ${runNumber}/${cfg.runs}`));
             console.log(separator);
@@ -46,31 +52,29 @@ async function main() {
                 updateTxHash(runCtx, 'sourceTxHash', srcOutput.txHash);
                 logSubmit(runCtx, srcOutput);
 
-                await waitWithCountdown(60000, "Bridge being performed...");
-
                 logStep(`observe`);
                 updateTimestamp(runCtx, 't2_observe', srcOutput.submittedAt);
+                await waitWithCountdown(60000, "Bridge being performed...");
                 const trgOutput = await runner.observe(runCtx);
                 updateTxHash(runCtx, 'targetTxHash', trgOutput.txHash);
-                updateTimestamp(runCtx, 't3_finalize', trgOutput.finalizedAt);
+                updateTimestamp(runCtx, 't3_finalized', trgOutput.finalizedAt);
                 logObserve(runCtx, trgOutput);
 
+                logStep(`gas refund`);
                 await waitWithCountdown(10000, "Waiting for gas refund transaction...");
-                
-                logStep("gas refund");
                 const gasRfdOutput = await runner.observeGasRefund(runCtx);
+                updateTimestamp(runCtx, 't4_finalized_gas_refund', srcOutput.submittedAt);
                 console.log(`✅ Gas refund received: ${gasRfdOutput.xrpAmount} XRP (${gasRfdOutput.txHash})`);
 
                 logStep("record")
                 const record = createRunRecord(runCtx, srcOutput, trgOutput, true, gasRfdOutput);
                 logRecord(record);
-                
-                allRecords.push(record);
+
+                records.push(record);
                 successCount++;
 
                 console.log(chalk.green(`✅ Run ${runNumber}/${cfg.runs} completed successfully`));
 
-                // Add delay between runs if not the last run
                 if (runIndex < cfg.runs - 1) {
                     await waitWithCountdown(5000, "Preparing next run...");
                 }
@@ -78,18 +82,18 @@ async function main() {
             } catch (err) {
                 failureCount++;
                 const errorMessage = err instanceof Error ? err.message : String(err);
-                
+
                 logError(`Run ${runNumber} failed`, "RUN_ERROR", err instanceof Error ? err : undefined);
-                
+
                 const failedRecord = createRunRecord(
-                    runCtx, 
+                    runCtx,
                     { xrpAmount: 0, txHash: runCtx.txs.sourceTxHash || "N/A", submittedAt: ctx.ts.t1_submit || 0, txFee: 0 },
-                    { xrpAmount: 0, txHash: runCtx.txs.targetTxHash || "N/A", finalizedAt: ctx.ts.t3_finalize || 0, txFee: 0 },
+                    { xrpAmount: 0, txHash: runCtx.txs.targetTxHash || "N/A", finalizedAt: ctx.ts.t3_finalized || 0, txFee: 0 },
                     false
                 );
                 failedRecord.abort_reason = errorMessage;
-                
-                allRecords.push(failedRecord);
+
+                records.push(failedRecord);
 
                 console.log(chalk.red(`❌ Run ${runNumber}/${cfg.runs} failed: ${errorMessage}`));
 
@@ -100,16 +104,17 @@ async function main() {
             }
         }
 
-        if (allRecords.length > 0) {
+        if (records.length > 0) {
+            logStep("METRICS");
+            const metricsReport = computeMetrics(cfg, records, (Date.now() - batchStartTime));
+            displayMetrics(metricsReport.summary, batchId);
+
             console.log(chalk.bold('\n💾 Saving batch records...'));
-            const batchId = saveBatchRecords(allRecords);
+            saveBatchArtifacts(batchId, cfg, records, metricsReport);
             console.log(chalk.green(`✅ Batch saved: ${batchId}`));
-            
-            saveBatchSummary(batchId, allRecords, batchStartTime);
-            console.log(chalk.green(`✅ Summary saved: ${batchId}_summary.json`));
         }
 
-        displayBatchSummary(cfg.runs, successCount, failureCount, allRecords, batchStartTime);
+        displayBatchSummary(cfg.runs, successCount, failureCount, records, batchStartTime);
 
     } catch (err) {
         logError("Fatal error during batch execution", "BATCH_ERROR", err instanceof Error ? err : undefined);

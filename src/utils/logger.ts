@@ -3,6 +3,7 @@ import { RunConfig, SourceOutput, TargetOutput, NetworkDirection, RunContext, Ru
 import { formatElapsedMs } from "./time";
 import readline from "readline";
 import { loadConfig } from "../runners/config";
+import { MetricsReport, MetricsSummary } from "./metrics";
 
 // Utility functions
 function formatAddress(address: string, chain: 'xrpl' | 'evm', showPrefix: boolean = false): string {
@@ -145,8 +146,8 @@ export function logObserve(ctx: RunContext, output: TargetOutput): void {
     console.log(`Amount: ${amount}`);
     console.log(`Hash: ${hash}`);
 
-    if (ctx.ts.t3_finalize && ctx.ts.t1_submit) {
-        const elapsed = formatElapsedMs(ctx.ts.t3_finalize - ctx.ts.t1_submit, { pad: true });
+    if (ctx.ts.t3_finalized && ctx.ts.t1_submit) {
+        const elapsed = formatElapsedMs(ctx.ts.t3_finalized - ctx.ts.t1_submit, { pad: true });
         console.log(`Time: ${chalk.green(elapsed)}`);
     }
 }
@@ -177,13 +178,13 @@ export function logRecord(record: RunRecord): void {
     if (timestamps.t2_observe) {
         console.log(`${chalk.bold('Observed')}: ${formatTimeOnly(timestamps.t2_observe)}`);
     }
-    if (timestamps.t3_finalize) {
-        console.log(`${chalk.bold('Finalized')}: ${formatTimeOnly(timestamps.t3_finalize)}`);
+    if (timestamps.t3_finalized) {
+        console.log(`${chalk.bold('Finalized')}: ${formatTimeOnly(timestamps.t3_finalized)}`);
     }
 
     // Calculate and display total latency if possible
-    if (timestamps.t1_submit && timestamps.t3_finalize) {
-        const totalLatency = timestamps.t3_finalize - timestamps.t1_submit;
+    if (timestamps.t1_submit && timestamps.t3_finalized) {
+        const totalLatency = timestamps.t3_finalized - timestamps.t1_submit;
         const formattedLatency = formatElapsedMs(totalLatency, { pad: true });
         console.log(`${chalk.bold('Total latency')}: ${chalk.green(formattedLatency)}`);
     }
@@ -236,8 +237,8 @@ export function displayBatchSummary(
     const successfulRecords = records.filter(r => r.success);
     if (successfulRecords.length > 0) {
         const avgLatency = successfulRecords.reduce((sum, r) => {
-            const latency = r.timestamps.t3_finalize && r.timestamps.t1_submit
-                ? r.timestamps.t3_finalize - r.timestamps.t1_submit
+            const latency = r.timestamps.t3_finalized && r.timestamps.t1_submit
+                ? r.timestamps.t3_finalized - r.timestamps.t1_submit
                 : 0;
             return sum + latency;
         }, 0) / successfulRecords.length;
@@ -465,4 +466,67 @@ export async function showMenu(): Promise<RunConfig> {
     } finally {
         rl.close();
     }
+}
+
+/** Safe number → fixed string or 'N/A' */
+function fx(n?: number | null, digits = 2): string {
+    if (n == null || Number.isNaN(n)) return "N/A";
+    return n.toFixed(digits);
+}
+
+/** Render ms; if > 1000ms, add "(Xs)" hint */
+function fxMs(ms?: number | null): string {
+    if (ms == null || Number.isNaN(ms)) return "N/A";
+    const base = ms.toFixed(2);
+    return ms >= 1000 ? `${base}  (${(ms / 1000).toFixed(2)}s)` : base;
+}
+
+/**
+ * Display comprehensive, friendly metrics using your current MetricsSummary type.
+ * Neutral wording; chain-agnostic; no currency.
+ */
+export function displayMetrics(metrics: MetricsSummary, batchId: string): void {
+    console.log(chalk.bold.cyan("\n📦 CONFIGURATION:"));
+    console.log(`  Tag:              ${chalk.white(metrics.tag)}`);
+    console.log(`  Direction:        ${chalk.white(metrics.direction)}`);
+    console.log(`  Amount (XRP):     ${chalk.white(String(metrics.xrpAmount))}`);
+    console.log(`  Runs (planned):   ${chalk.white(String(metrics.runsPlanned))}`);
+    console.log(`  Timestamp:        ${chalk.dim(metrics.timestampIso)}`);
+
+    console.log(chalk.bold.cyan("\n🎯 SUCCESS METRICS:"));
+    console.log(`  Total Runs:       ${chalk.white(metrics.totalRuns)}`);
+    console.log(`  Successful:       ${chalk.green(metrics.successCount)} ${chalk.green(`(${(metrics.successRate * 100).toFixed(2)}%)`)}`);
+    console.log(`  Failed:           ${chalk.red(metrics.failureCount)}`);
+
+    if (metrics.successCount > 0) {
+        console.log(chalk.bold.cyan("\n⏱️  LATENCY DISTRIBUTION (milliseconds):"));
+        console.log(`  Min:              ${chalk.cyan(fxMs(metrics.latency.minMs))}`);
+        console.log(`  P50 (Median):     ${chalk.cyan(fxMs(metrics.latency.p50Ms))}`);
+        console.log(`  P90:              ${chalk.cyan(fxMs(metrics.latency.p90Ms))}`);
+        console.log(`  P95:              ${chalk.yellow(fxMs(metrics.latency.p95Ms))}`);
+        console.log(`  P99:              ${chalk.yellow(fxMs(metrics.latency.p99Ms))}`);
+        console.log(`  Max:              ${chalk.cyan(fxMs(metrics.latency.maxMs))}`);
+        console.log(`  Mean:             ${chalk.white(fx(metrics.latency.meanMs))}`);
+        console.log(`  Std Dev:          ${chalk.dim(fx(metrics.latency.stdDevMs))}`);
+
+        if (metrics.tps != null || metrics.batchDurationMs != null) {
+            console.log(chalk.bold.cyan("\n🚀 THROUGHPUT:"));
+            if (metrics.tps != null) {
+                console.log(`  Transactions/sec: ${chalk.green(fx(metrics.tps, 4))}`);
+            } else {
+                console.log(`  Transactions/sec: ${chalk.dim("N/A")}`);
+            }
+            if (metrics.batchDurationMs != null) {
+                console.log(`  Batch Duration:   ${chalk.white((metrics.batchDurationMs / 1000).toFixed(2))}s`);
+            } else {
+                console.log(`  Batch Duration:   ${chalk.dim("N/A")}`);
+            }
+        }
+    } else {
+        console.log(chalk.red("\n⚠️  No successful runs to analyze."));
+    }
+
+    console.log(chalk.bold("─".repeat(60)));
+    console.log(chalk.green(`✅ Metrics saved: ${batchId}_metrics.json & ${batchId}_metrics.csv`));
+    console.log(chalk.dim(`   Aggregated to: all_metrics.csv`));
 }

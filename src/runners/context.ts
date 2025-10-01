@@ -15,7 +15,7 @@ export function createRunContext(cfg: RunConfig): RunContext {
             t0_prepare: undefined,
             t1_submit: undefined,
             t2_observe: undefined,
-            t3_finalize: undefined,
+            t3_finalized: undefined,
         },
         txs: {
             sourceTxHash: undefined,
@@ -61,7 +61,7 @@ export function createRunRecord(
 
 export function updateTimestamp(
     ctx: RunContext,
-    phase: 't0_prepare' | 't1_submit' | 't2_observe' | 't3_finalize',
+    phase: 't0_prepare' | 't1_submit' | 't2_observe' | 't3_finalized' | 't4_finalized_gas_refund',
     timestamp: number = Date.now()
 ): void {
     ctx.ts[phase] = timestamp;

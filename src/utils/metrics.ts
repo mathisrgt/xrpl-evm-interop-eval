@@ -1,48 +1,63 @@
-// metrics.ts
+import type { RunConfig, RunRecord } from "../types";
 
-/** 
- * Minimal row used for summaries.
- * Build this from each RunRecord after an experiment.
- */
-export interface BriefRow {
-  /** True if the run reached finality successfully */
-  success: boolean;
-  /** End-to-end latency in milliseconds (t4 - t1), null if not available */
-  latencyMs: number | null;
-  /** Total fee in USD for this run, null if not computed */
-  totalUsd: number | null;
-}
-
-/** 
- * Compact summary of an experiment batch.
- * This is the structure you would include in CSV/plots/tables. 
- */
-export interface Summary {
-  /** Total number of runs */
+export interface LatencyStats {
   n: number;
-  /** Fraction of successful runs [0..1] */
-  successRate: number;
-  /** Median latency (p50) in ms, null if no successful runs */
-  p50LatencyMs: number | null;
-  /** 90th percentile latency (p90) in ms, null if no successful runs */
-  p90LatencyMs: number | null;
-  /** Average cost across runs with valid totalUsd, null if none */
-  avgCostUsd: number | null;
+  minMs: number | null;
+  p50Ms: number | null;
+  p90Ms: number | null;
+  p95Ms: number | null;
+  p99Ms: number | null;
+  maxMs: number | null;
+  meanMs: number | null;
+  stdDevMs: number | null;
 }
 
-/**
- * Compute a percentile value from a sorted numeric array.
- *
- * Uses linear interpolation between closest ranks.
- *
- * @param sortedAsc - Array of numbers in ascending order.
- * @param p - Percentile in [0,1], e.g. 0.5 for median, 0.9 for p90.
- * @returns The interpolated percentile value, or NaN if array empty.
- */
+export interface MetricsSummary {
+  timestampIso: string;
+  tag: string;
+ 
+  direction: string;
+  xrpAmount: number;
+  runsPlanned: number;
+
+  totalRuns: number;
+  successCount: number;
+  failureCount: number;
+  successRate: number;
+
+  latency: LatencyStats;
+
+  batchDurationMs: number | null;
+  tps: number | null;
+}
+
+export interface MetricsReport {
+  summary: MetricsSummary;
+  latenciesMs: number[];
+  failureReasons: Record<string, number>;
+  cfgEcho: {
+    tag: string;
+    mode: string;
+    direction: string;
+    xrpAmount: number;
+    runs: number;
+    xrplUrl: string;
+    evmUrl: string;
+  };
+}
+
+function byNumberAsc(a: number, b: number) { return a - b; }
+function mean(arr: number[]): number | null {
+  return arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null;
+}
+function stddev(arr: number[]): number | null {
+  if (!arr.length) return null;
+  const m = mean(arr)!;
+  const v = arr.reduce((s, x) => s + (x - m) ** 2, 0) / arr.length;
+  return Math.sqrt(v);
+}
 function percentile(sortedAsc: number[], p: number): number {
-  if (sortedAsc.length === 0) return NaN;
-  if (p <= 0) return sortedAsc[0];
-  if (p >= 1) return sortedAsc[sortedAsc.length - 1];
+  if (!sortedAsc.length) return NaN;
   const idx = (sortedAsc.length - 1) * p;
   const lo = Math.floor(idx);
   const hi = Math.ceil(idx);
@@ -50,73 +65,78 @@ function percentile(sortedAsc: number[], p: number): number {
   return (1 - w) * sortedAsc[lo] + w * sortedAsc[hi];
 }
 
-/**
- * Compute a compact summary for an experiment.
- *
- * - Success rate = fraction of runs where success=true.
- * - Latency percentiles (p50, p90) = computed only on successful runs
- *   that have a numeric latency.
- * - Average cost = mean totalUsd across runs with numeric values.
- *
- * @param rows - Array of per-run brief rows.
- * @returns A Summary object with success rate, latency stats, and average cost.
- */
-export function toSummary(rows: BriefRow[]): Summary {
-  const n = rows.length;
-  const nSucc = rows.filter(r => r.success).length;
-  const successRate = n === 0 ? 0 : nSucc / n;
-
-  // Latencies: successful runs with valid numbers
-  const latencies = rows
-    .filter(r => r.success && typeof r.latencyMs === "number" && Number.isFinite(r.latencyMs))
-    .map(r => r.latencyMs as number)
-    .sort((a, b) => a - b);
-
-  const p50LatencyMs = latencies.length ? percentile(latencies, 0.5) : null;
-  const p90LatencyMs = latencies.length ? percentile(latencies, 0.9) : null;
-
-  // Costs: all runs with valid totalUsd
-  const costs = rows
-    .map(r => r.totalUsd)
-    .filter((x): x is number => typeof x === "number" && Number.isFinite(x));
-  const avgCostUsd = costs.length
-    ? costs.reduce((a, b) => a + b, 0) / costs.length
-    : null;
-
-  return {
-    n,
-    successRate,
-    p50LatencyMs,
-    p90LatencyMs,
-    avgCostUsd,
-  };
+// End-to-end latency: start of submit -> start of observe (both START stamps)
+function e2eLatencyMs(r: RunRecord): number | null {
+  const t1 = r.timestamps.t1_submit;
+  const t2 = r.timestamps.t2_observe;
+  if (typeof t1 !== "number" || typeof t2 !== "number") return null;
+  return Math.max(0, t2 - t1);
 }
 
-/**
- * Convert full RunRecord-like objects into BriefRows.
- *
- * @typeParam T - A type that has at least success, timestamps, and costs fields.
- * @param runs - Array of RunRecord-like objects.
- * @returns Array of BriefRow, with only success, latencyMs, and totalUsd extracted.
- *
- * @example
- * const brief = runsToBrief(runRecords);
- * const summary = toSummary(brief);
- */
-export function runsToBrief<T extends {
-  success: boolean;
-  timestamps: { t1_submit_source?: number; t4_finality_target?: number | null };
-  costs: { totalUsd?: number | null };
-}>(runs: T[]): BriefRow[] {
-  return runs.map(r => {
-    const t1 = r.timestamps.t1_submit_source;
-    const t4 = r.timestamps.t4_finality_target ?? null;
-    const latencyMs =
-      (typeof t1 === "number" && typeof t4 === "number") ? (t4 - t1) : null;
-    return {
-      success: r.success,
-      latencyMs,
-      totalUsd: (typeof r.costs.totalUsd === "number") ? r.costs.totalUsd : null,
-    };
-  });
+export function computeMetrics(cfg: RunConfig, records: RunRecord[], batchDurationMs?: number): MetricsReport {
+  const successes = records.filter(r => r.success);
+  const failures = records.filter(r => !r.success);
+
+  const latencies = successes
+    .map(e2eLatencyMs)
+    .filter((x): x is number => typeof x === "number");
+
+  const failureReasons = failures.reduce<Record<string, number>>((acc, r) => {
+    const k = r.abort_reason ?? "unknown";
+    acc[k] = (acc[k] || 0) + 1;
+    return acc;
+  }, {});
+
+  const latSorted = [...latencies].sort(byNumberAsc);
+  const latencyStats: LatencyStats = {
+    n: latencies.length,
+    minMs: latencies.length ? latSorted[0] : null,
+    p50Ms: latencies.length ? percentile(latSorted, 0.50) : null,
+    p90Ms: latencies.length ? percentile(latSorted, 0.90) : null,
+    p95Ms: latencies.length ? percentile(latSorted, 0.95) : null,
+    p99Ms: latencies.length ? percentile(latSorted, 0.99) : null,
+    maxMs: latencies.length ? latSorted[latSorted.length - 1] : null,
+    meanMs: mean(latencies),
+    stdDevMs: stddev(latencies),
+  };
+
+  const totalRuns = records.length;
+  const successCount = successes.length;
+  const failureCount = totalRuns - successCount;
+  const successRate = totalRuns ? successCount / totalRuns : 0;
+
+  const tps =
+    (typeof batchDurationMs === "number" && batchDurationMs > 0)
+      ? successCount / (batchDurationMs / 1000)
+      : null;
+
+  const summary: MetricsSummary = {
+    timestampIso: new Date().toISOString(),
+    tag: cfg.tag,
+    direction: cfg.direction,
+    xrpAmount: cfg.xrpAmount,
+    runsPlanned: cfg.runs,
+    totalRuns,
+    successCount,
+    failureCount,
+    successRate,
+    latency: latencyStats,
+    batchDurationMs: batchDurationMs ?? null,
+    tps,
+  };
+
+  return {
+    summary,
+    latenciesMs: latencies,
+    failureReasons,
+    cfgEcho: {
+      tag: cfg.tag,
+      mode: cfg.networks.mode,
+      direction: cfg.direction,
+      xrpAmount: cfg.xrpAmount,
+      runs: cfg.runs,
+      xrplUrl: cfg.networks.xrpl.wsUrl,
+      evmUrl: cfg.networks.evm.rpcUrl,
+    },
+  };
 }

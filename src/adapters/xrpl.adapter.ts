@@ -1,7 +1,6 @@
 import { Client, Payment, Wallet, convertStringToHex, dropsToXrp, xrpToDrops } from "xrpl";
-import type { ChainAdapter, RunContext, SourceOutput, TargetOutput, GasRefundOutput } from "../../types";
-import { XRPL_TX_PAYLOAD } from "../../utils/environment";
-import { formatElapsedMs } from "../../utils/time";
+import type { ChainAdapter, RunContext, SourceOutput, TargetOutput, GasRefundOutput } from "../types";
+import chalk from "chalk";
 
 export const xrplAdapter: ChainAdapter = {
 
@@ -149,52 +148,59 @@ export const xrplAdapter: ChainAdapter = {
         const { client, wallet } = ctx.cache.xrpl!;
         if (!client || !wallet) throw new Error("XRPL not prepared");
 
+
+
         return new Promise((resolve, reject) => {
-            let finished = false;
+            console.log(chalk.gray("Gas return ignored"));
+            resolve({
+                xrpAmount: 0,
+                txHash: "0x"
+            })
+            //     let finished = false;
 
-            const cleanup = async () => {
-                if (finished) return;
-                finished = true;
-                clearTimeout(timeoutId);
-                client.off("transaction", onRefundTx);
-            };
+            //     const cleanup = async () => {
+            //         if (finished) return;
+            //         finished = true;
+            //         clearTimeout(timeoutId);
+            //         client.off("transaction", onRefundTx);
+            //     };
 
-            const timeoutId = setTimeout(() => {
-                cleanup().then(() => reject(new Error("Gas refund timeout")));
-            }, 5 * 60_000);
+            //     const timeoutId = setTimeout(() => {
+            //         cleanup().then(() => reject(new Error("Gas refund timeout")));
+            //     }, 5 * 60_000);
 
-            const onRefundTx = (data: any) => {
-                if (!data?.validated) return;
+            //     const onRefundTx = (data: any) => {
+            //         if (!data?.validated) return;
 
-                console.log("new tx: ", data);
+            //         console.log("new tx: ", data);
 
-                const tx = data?.tx_json;
-                const meta = data?.meta;
+            //         const tx = data?.tx_json;
+            //         const meta = data?.meta;
 
-                if (!tx || tx.TransactionType !== "Payment") return;
-                if (tx.Destination !== wallet.address) return;
+            //         if (!tx || tx.TransactionType !== "Payment") return;
+            //         if (tx.Destination !== wallet.address) return;
 
-                const refundAmount = Number(dropsToXrp(meta?.delivered_amount));
+            //         const refundAmount = Number(dropsToXrp(meta?.delivered_amount));
 
-                console.log(`⛽ Gas refund received: ${refundAmount} XRP from ${tx.Account}`);
+            //         console.log(`⛽ Gas refund received: ${refundAmount} XRP from ${tx.Account}`);
 
-                cleanup().then(() =>
-                    resolve({
-                        xrpAmount: refundAmount,
-                        txHash: data.hash
-                    })
-                );
-            };
+            //         cleanup().then(() =>
+            //             resolve({
+            //                 xrpAmount: refundAmount,
+            //                 txHash: data.hash
+            //             })
+            //         );
+            //     };
 
-            client
-                .request({ command: "subscribe", accounts: [wallet.address] })
-                .then(() => {
-                    console.log(`🔍 Monitoring transactions for ${wallet.address}`);
-                    client.on("transaction", onRefundTx);
-                })
-                .catch((err: unknown) => {
-                    cleanup().then(() => reject(err instanceof Error ? err : new Error(String(err))));
-                });
-        });
-    }
+            //     client
+            //         .request({ command: "subscribe", accounts: [wallet.address] })
+            //         .then(() => {
+            //             console.log(`🔍 Monitoring transactions for ${wallet.address}`);
+            //             client.on("transaction", onRefundTx);
+            //         })
+            //         .catch((err: unknown) => {
+            //             cleanup().then(() => reject(err instanceof Error ? err : new Error(String(err))));
+            //         });
+            });
+        }
 };
