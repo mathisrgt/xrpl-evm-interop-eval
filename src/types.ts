@@ -92,6 +92,7 @@ export interface RunTxs {
 /** Mutable runtime state shared across phases (NOT for publishing). */
 export interface RunContext {
     readonly cfg: RunConfig;
+    runId: string,
     ts: RunTimestamps;
     txs: RunTxs;
     cache: {

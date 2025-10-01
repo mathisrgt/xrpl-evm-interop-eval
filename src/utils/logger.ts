@@ -209,40 +209,60 @@ export function logRecord(record: RunRecord): void {
     }
 }
 
-// export function logBatchComplete(
-//     totalRuns: number,
-//     successCount: number,
-//     totalDuration: number,
-//     avgLatency?: number
-// ): void {
-//     const separator = chalk.bold('═'.repeat(60));
-//     const successRate = (successCount / totalRuns * 100).toFixed(1);
-//     const duration = formatElapsedMs(totalDuration, { includeHours: true, pad: true });
+export function displayBatchSummary(
+    totalRuns: number,
+    successCount: number,
+    failureCount: number,
+    records: RunRecord[],
+    startTime: number
+): void {
+    const separator = chalk.bold('═'.repeat(80));
+    const totalDuration = Date.now() - startTime;
+    const successRate = (successCount / totalRuns * 100).toFixed(1);
 
-//     console.log(`\n${separator}`);
-//     console.log(chalk.bold('🏁 BATCH COMPLETE'));
-//     console.log(separator);
+    console.log(`\n${separator}`);
+    console.log(chalk.bold.cyan('📊 BATCH SUMMARY'));
+    console.log(separator);
 
-//     const summary = [
-//         ['Total Runs', chalk.white(totalRuns.toString())],
-//         ['Successful', chalk[successCount === totalRuns ? 'green' : 'yellow'](successCount.toString())],
-//         ['Success Rate', chalk[successCount === totalRuns ? 'green' : 'yellow'](`${successRate}%`)],
-//         ['Total Duration', chalk.cyan(duration)],
-//     ];
+    // Basic statistics
+    console.log(`\n${chalk.bold('Execution Statistics:')}`);
+    console.log(`  Total Runs:    ${chalk.white(totalRuns)}`);
+    console.log(`  Successful:    ${chalk.green(successCount)}`);
+    console.log(`  Failed:        ${chalk.red(failureCount)}`);
+    console.log(`  Success Rate:  ${chalk[successCount === totalRuns ? 'green' : 'yellow'](successRate + '%')}`);
+    console.log(`  Total Time:    ${chalk.cyan(formatElapsedMs(totalDuration))}`);
 
-//     if (avgLatency && successCount > 0) {
-//         summary.push(['Avg Latency', chalk.cyan(formatElapsedMs(avgLatency, { pad: true }))]);
-//     }
+    // Calculate averages from successful runs
+    const successfulRecords = records.filter(r => r.success);
+    if (successfulRecords.length > 0) {
+        const avgLatency = successfulRecords.reduce((sum, r) => {
+            const latency = r.timestamps.t3_finalize && r.timestamps.t1_submit
+                ? r.timestamps.t3_finalize - r.timestamps.t1_submit
+                : 0;
+            return sum + latency;
+        }, 0) / successfulRecords.length;
 
-//     const maxKeyLength = Math.max(...summary.map(([key]) => key.length));
+        const avgTotalCost = successfulRecords.reduce((sum, r) => sum + (r.costs.totalCost || 0), 0) / successfulRecords.length;
+        const avgBridgeCost = successfulRecords.reduce((sum, r) => sum + (r.costs.totalBridgeCost || 0), 0) / successfulRecords.length;
 
-//     summary.forEach(([key, value]) => {
-//         const paddedKey = chalk.dim(key.padEnd(maxKeyLength));
-//         console.log(`  ${paddedKey} : ${value}`);
-//     });
+        console.log(`\n${chalk.bold('Performance Averages (successful runs):')}`);
+        console.log(`  Latency:       ${chalk.cyan(formatElapsedMs(avgLatency))}`);
+        console.log(`  Total Cost:    ${chalk.yellow(avgTotalCost.toFixed(6) + ' XRP')}`);
+        console.log(`  Bridge Cost:   ${chalk.yellow(avgBridgeCost.toFixed(6) + ' XRP')}`);
+    }
 
-//     console.log(separator);
-// }
+    // List failed runs if any
+    if (failureCount > 0) {
+        console.log(`\n${chalk.bold.red('Failed Runs:')}`);
+        records.forEach((record, index) => {
+            if (!record.success) {
+                console.log(`  ${chalk.red(`Run ${index + 1}:`)} ${record.abort_reason || 'Unknown error'}`);
+            }
+        });
+    }
+
+    console.log(`\n${separator}\n`);
+}
 
 export function logError(message: string, context?: string, error?: Error): void {
     const contextStr = context ? chalk.red(`[${context}]`) : '';

@@ -5,8 +5,12 @@ import { RunContext, RunConfig, RunRecord, SourceOutput, TargetOutput, GasRefund
  * Create a new RunContext with initialized empty state
  */
 export function createRunContext(cfg: RunConfig): RunContext {
+    
+    const runId = `${cfg.tag}_run${cfg.runs}`;
+
     return {
         cfg,
+        runId,
         ts: {
             t0_prepare: undefined,
             t1_submit: undefined,

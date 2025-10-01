@@ -5,7 +5,7 @@ import { formatElapsedMs } from "../../utils/time";
 
 export const xrplAdapter: ChainAdapter = {
 
-    // Prepare the client and wallet
+    /** Prepare the client and wallet */
     async prepare(ctx: RunContext) {
         const client = new Client(ctx.cfg.networks.xrpl.wsUrl);
         await client.connect();
@@ -36,7 +36,6 @@ export const xrplAdapter: ChainAdapter = {
                     Memo: {
                         MemoType: convertStringToHex("destination_address"),
                         MemoData: convertStringToHex(account.address.slice(2))
-                        // ctx.cfg.networks.evm.relayer
                     }
                 },
                 {
@@ -51,12 +50,6 @@ export const xrplAdapter: ChainAdapter = {
                         MemoData: convertStringToHex(ctx.cfg.networks.xrpl.gas_fee)
                     }
                 }
-                // {
-                //     Memo: {
-                //         MemoType: convertStringToHex("payload"),
-                //         MemoData: XRPL_TX_PAYLOAD // TODO: REPLACE BY A DETERMINISTIC FUNCTION AND PARAMS
-                //     }
-                // },
             ]
         };
 
@@ -75,6 +68,7 @@ export const xrplAdapter: ChainAdapter = {
         return { xrpAmount: ctx.cfg.xrpAmount, txHash, submittedAt, txFee };
     },
 
+    /** Monitor the incoming transaction on the blockchain */
     async observe(ctx: RunContext): Promise<TargetOutput> {
         const { client, wallet } = ctx.cache.xrpl ?? {};
         if (!client || !wallet) throw new Error("XRPL not prepared");
@@ -148,7 +142,7 @@ export const xrplAdapter: ChainAdapter = {
     },
 
     /** 
-     * Observe gas refund transaction from the bridge refunder contract
+     * Monitor the gas refund transaction from the bridge refunder contract
      * This runs after the main bridge transfer is complete
      */
     async observeGasRefund(ctx: RunContext): Promise<GasRefundOutput> {
@@ -163,7 +157,6 @@ export const xrplAdapter: ChainAdapter = {
                 finished = true;
                 clearTimeout(timeoutId);
                 client.off("transaction", onRefundTx);
-                // Note: Don't unsubscribe here as main client might still be in use
             };
 
             const timeoutId = setTimeout(() => {
@@ -180,7 +173,6 @@ export const xrplAdapter: ChainAdapter = {
 
                 if (!tx || tx.TransactionType !== "Payment") return;
                 if (tx.Destination !== wallet.address) return;
-                // if (tx.Account !== ctx.cfg.networks.xrpl.gas_refunder) return;
 
                 const refundAmount = Number(dropsToXrp(meta?.delivered_amount));
 
