@@ -3,7 +3,7 @@ import { RunConfig, SourceOutput, TargetOutput, NetworkDirection, RunContext, Ru
 import { formatElapsedMs } from "./time";
 import readline from "readline";
 import { loadConfig } from "../runners/config";
-import { MetricsReport, MetricsSummary } from "./metrics";
+import { MetricsSummary } from "./metrics";
 
 // Utility functions
 function formatAddress(address: string, chain: 'xrpl' | 'evm', showPrefix: boolean = false): string {
@@ -208,61 +208,6 @@ export function logRecord(record: RunRecord): void {
     if (costs.totalCost) {
         console.log(`${chalk.bold('Total cost')}: ${chalk.yellow(costs.totalCost.toFixed(4))} XRP`);
     }
-}
-
-export function displayBatchSummary(
-    totalRuns: number,
-    successCount: number,
-    failureCount: number,
-    records: RunRecord[],
-    startTime: number
-): void {
-    const separator = chalk.bold('═'.repeat(80));
-    const totalDuration = Date.now() - startTime;
-    const successRate = (successCount / totalRuns * 100).toFixed(1);
-
-    console.log(`\n${separator}`);
-    console.log(chalk.bold.cyan('📊 BATCH SUMMARY'));
-    console.log(separator);
-
-    // Basic statistics
-    console.log(`\n${chalk.bold('Execution Statistics:')}`);
-    console.log(`  Total Runs:    ${chalk.white(totalRuns)}`);
-    console.log(`  Successful:    ${chalk.green(successCount)}`);
-    console.log(`  Failed:        ${chalk.red(failureCount)}`);
-    console.log(`  Success Rate:  ${chalk[successCount === totalRuns ? 'green' : 'yellow'](successRate + '%')}`);
-    console.log(`  Total Time:    ${chalk.cyan(formatElapsedMs(totalDuration))}`);
-
-    // Calculate averages from successful runs
-    const successfulRecords = records.filter(r => r.success);
-    if (successfulRecords.length > 0) {
-        const avgLatency = successfulRecords.reduce((sum, r) => {
-            const latency = r.timestamps.t3_finalized && r.timestamps.t1_submit
-                ? r.timestamps.t3_finalized - r.timestamps.t1_submit
-                : 0;
-            return sum + latency;
-        }, 0) / successfulRecords.length;
-
-        const avgTotalCost = successfulRecords.reduce((sum, r) => sum + (r.costs.totalCost || 0), 0) / successfulRecords.length;
-        const avgBridgeCost = successfulRecords.reduce((sum, r) => sum + (r.costs.totalBridgeCost || 0), 0) / successfulRecords.length;
-
-        console.log(`\n${chalk.bold('Performance Averages (successful runs):')}`);
-        console.log(`  Latency:       ${chalk.cyan(formatElapsedMs(avgLatency))}`);
-        console.log(`  Total Cost:    ${chalk.yellow(avgTotalCost.toFixed(6) + ' XRP')}`);
-        console.log(`  Bridge Cost:   ${chalk.yellow(avgBridgeCost.toFixed(6) + ' XRP')}`);
-    }
-
-    // List failed runs if any
-    if (failureCount > 0) {
-        console.log(`\n${chalk.bold.red('Failed Runs:')}`);
-        records.forEach((record, index) => {
-            if (!record.success) {
-                console.log(`  ${chalk.red(`Run ${index + 1}:`)} ${record.abort_reason || 'Unknown error'}`);
-            }
-        });
-    }
-
-    console.log(`\n${separator}\n`);
 }
 
 export function logError(message: string, context?: string, error?: Error): void {
@@ -485,21 +430,23 @@ function fxMs(ms?: number | null): string {
  * Display comprehensive, friendly metrics using your current MetricsSummary type.
  * Neutral wording; chain-agnostic; no currency.
  */
-export function displayMetrics(metrics: MetricsSummary, batchId: string): void {
-    console.log(chalk.bold.cyan("\n📦 CONFIGURATION:"));
+export function displayMetrics(metrics: MetricsSummary): void {
+    console.log(chalk.bold.cyan("\nConfiguration:"));
     console.log(`  Tag:              ${chalk.white(metrics.tag)}`);
     console.log(`  Direction:        ${chalk.white(metrics.direction)}`);
     console.log(`  Amount (XRP):     ${chalk.white(String(metrics.xrpAmount))}`);
-    console.log(`  Runs (planned):   ${chalk.white(String(metrics.runsPlanned))}`);
-    console.log(`  Timestamp:        ${chalk.dim(metrics.timestampIso)}`);
+    console.log(`  Runs requested:   ${chalk.white(String(metrics.runsPlanned))}`);
 
-    console.log(chalk.bold.cyan("\n🎯 SUCCESS METRICS:"));
-    console.log(`  Total Runs:       ${chalk.white(metrics.totalRuns)}`);
-    console.log(`  Successful:       ${chalk.green(metrics.successCount)} ${chalk.green(`(${(metrics.successRate * 100).toFixed(2)}%)`)}`);
-    console.log(`  Failed:           ${chalk.red(metrics.failureCount)}`);
+    console.log(`\n${chalk.bold('Execution:')}`);
+    console.log(`  Total Runs:    ${chalk.white(metrics.totalRuns)}`);
+    console.log(`  Successful:    ${chalk.green(metrics.successCount)}`);
+    console.log(`  Failed:        ${chalk.red(metrics.failureCount)}`);
+    console.log(`  Success Rate:  ${chalk[metrics.successCount === metrics.totalRuns ? 'green' : 'yellow']((metrics.successRate * 100) + '%')}`);
+    console.log(`  Total Time:    ${chalk.cyan(formatElapsedMs(metrics.batchDurationMs))}`);
+
 
     if (metrics.successCount > 0) {
-        console.log(chalk.bold.cyan("\n⏱️  LATENCY DISTRIBUTION (milliseconds):"));
+        console.log(chalk.bold.cyan("\n⏱️ Latency distribution (ms):"));
         console.log(`  Min:              ${chalk.cyan(fxMs(metrics.latency.minMs))}`);
         console.log(`  P50 (Median):     ${chalk.cyan(fxMs(metrics.latency.p50Ms))}`);
         console.log(`  P90:              ${chalk.cyan(fxMs(metrics.latency.p90Ms))}`);
@@ -508,25 +455,12 @@ export function displayMetrics(metrics: MetricsSummary, batchId: string): void {
         console.log(`  Max:              ${chalk.cyan(fxMs(metrics.latency.maxMs))}`);
         console.log(`  Mean:             ${chalk.white(fx(metrics.latency.meanMs))}`);
         console.log(`  Std Dev:          ${chalk.dim(fx(metrics.latency.stdDevMs))}`);
-
-        if (metrics.tps != null || metrics.batchDurationMs != null) {
-            console.log(chalk.bold.cyan("\n🚀 THROUGHPUT:"));
-            if (metrics.tps != null) {
-                console.log(`  Transactions/sec: ${chalk.green(fx(metrics.tps, 4))}`);
-            } else {
-                console.log(`  Transactions/sec: ${chalk.dim("N/A")}`);
-            }
-            if (metrics.batchDurationMs != null) {
-                console.log(`  Batch Duration:   ${chalk.white((metrics.batchDurationMs / 1000).toFixed(2))}s`);
-            } else {
-                console.log(`  Batch Duration:   ${chalk.dim("N/A")}`);
-            }
-        }
     } else {
         console.log(chalk.red("\n⚠️  No successful runs to analyze."));
     }
-
-    console.log(chalk.bold("─".repeat(60)));
-    console.log(chalk.green(`✅ Metrics saved: ${batchId}_metrics.json & ${batchId}_metrics.csv`));
-    console.log(chalk.dim(`   Aggregated to: all_metrics.csv`));
+    if (metrics.costs.meanTotalXrp && metrics.costs.meanBridgeXrp) {
+        console.log(`\n${chalk.bold('Costs average:')}`);
+        console.log(`  Total Cost:    ${chalk.yellow(metrics.costs.meanTotalXrp.toFixed(6) + ' XRP')}`);
+        console.log(`  Bridge Cost:   ${chalk.yellow(metrics.costs.meanBridgeXrp.toFixed(6) + ' XRP')}`);
+    }
 }

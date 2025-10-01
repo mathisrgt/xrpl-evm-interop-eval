@@ -3,7 +3,7 @@ import { createRunContext, createRunRecord, updateTimestamp, updateTxHash } from
 import { Runner } from "./runners/runner";
 import type { RunRecord } from "./types";
 import { saveBatchArtifacts } from "./utils/fsio";
-import { displayBatchSummary, displayMetrics, logConfig, logError, logObserve, logPrepare, logRecord, logStep, logSubmit, showMenu } from "./utils/logger";
+import { displayMetrics, logConfig, logError, logObserve, logPrepare, logRecord, logStep, logSubmit, showMenu } from "./utils/logger";
 import { waitWithCountdown } from "./utils/time";
 import { computeMetrics } from "./utils/metrics";
 
@@ -105,17 +105,14 @@ async function main() {
         }
 
         if (records.length > 0) {
-            logStep("METRICS");
+            logStep("Metrics");
             const metricsReport = computeMetrics(cfg, records, (Date.now() - batchStartTime));
-            displayMetrics(metricsReport.summary, batchId);
+            displayMetrics(metricsReport.summary);
 
             console.log(chalk.bold('\n💾 Saving batch records...'));
             saveBatchArtifacts(batchId, cfg, records, metricsReport);
             console.log(chalk.green(`✅ Batch saved: ${batchId}`));
         }
-
-        displayBatchSummary(cfg.runs, successCount, failureCount, records, batchStartTime);
-
     } catch (err) {
         logError("Fatal error during batch execution", "BATCH_ERROR", err instanceof Error ? err : undefined);
         console.error(err);

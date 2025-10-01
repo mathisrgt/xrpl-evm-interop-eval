@@ -12,10 +12,22 @@ export interface LatencyStats {
   stdDevMs: number | null;
 }
 
+export interface CostsStats {
+  n: number;
+  meanTotalXrp: number | null;
+  minTotalXrp: number | null;
+  maxTotalXrp: number | null;
+  stdDevTotalXrp: number | null;
+
+  meanBridgeXrp: number | null;
+  meanSourceFeeXrp: number | null;
+  meanTargetFeeXrp: number | null;
+}
+
 export interface MetricsSummary {
   timestampIso: string;
   tag: string;
- 
+
   direction: string;
   xrpAmount: number;
   runsPlanned: number;
@@ -26,9 +38,9 @@ export interface MetricsSummary {
   successRate: number;
 
   latency: LatencyStats;
+  costs: CostsStats;
 
-  batchDurationMs: number | null;
-  tps: number | null;
+  batchDurationMs: number;
 }
 
 export interface MetricsReport {
@@ -68,15 +80,30 @@ function percentile(sortedAsc: number[], p: number): number {
 // End-to-end latency: start of submit -> start of observe (both START stamps)
 function e2eLatencyMs(r: RunRecord): number | null {
   const t1 = r.timestamps.t1_submit;
-  const t2 = r.timestamps.t2_observe;
-  if (typeof t1 !== "number" || typeof t2 !== "number") return null;
-  return Math.max(0, t2 - t1);
+  const t3 = r.timestamps.t3_finalized;
+  if (typeof t1 !== "number" || typeof t3 !== "number") return null;
+  return Math.max(0, t3 - t1);
 }
 
-export function computeMetrics(cfg: RunConfig, records: RunRecord[], batchDurationMs?: number): MetricsReport {
+/** Best-effort total cost in XRP:
+ *  - prefer r.costs.totalXrp if present
+ *  - otherwise sum the components that are numbers
+ */
+function totalCostXrp(r: RunRecord): number | null {
+  const c: any = r.costs ?? {};
+  if (typeof c.totalXrp === "number") return c.totalXrp;
+
+  const parts = [c.bridgeFeeXrp, c.sourceFeeXrp, c.targetFeeXrp]
+    .filter((x: any): x is number => typeof x === "number");
+
+  return parts.length ? parts.reduce((s: number, x: number) => s + x, 0) : null;
+}
+
+export function computeMetrics(cfg: RunConfig, records: RunRecord[], batchDurationMs: number): MetricsReport {
   const successes = records.filter(r => r.success);
   const failures = records.filter(r => !r.success);
 
+  // Latencies on successful runs
   const latencies = successes
     .map(e2eLatencyMs)
     .filter((x): x is number => typeof x === "number");
@@ -100,15 +127,37 @@ export function computeMetrics(cfg: RunConfig, records: RunRecord[], batchDurati
     stdDevMs: stddev(latencies),
   };
 
+  const totals = successes
+    .map(totalCostXrp)
+    .filter((x): x is number => typeof x === "number");
+  const totalsSorted = [...totals].sort(byNumberAsc);
+
+  const bridgeArr = successes
+    .map((r: any) => r.costs?.bridgeFeeXrp)
+    .filter((x: any): x is number => typeof x === "number");
+  const sourceArr = successes
+    .map((r: any) => r.costs?.sourceFeeXrp)
+    .filter((x: any): x is number => typeof x === "number");
+  const targetArr = successes
+    .map((r: any) => r.costs?.targetFeeXrp)
+    .filter((x: any): x is number => typeof x === "number");
+
+  const costStats: CostsStats = {
+    n: totals.length,
+    meanTotalXrp: mean(totals),
+    minTotalXrp: totals.length ? totalsSorted[0] : null,
+    maxTotalXrp: totals.length ? totalsSorted[totalsSorted.length - 1] : null,
+    stdDevTotalXrp: stddev(totals),
+
+    meanBridgeXrp: mean(bridgeArr),
+    meanSourceFeeXrp: mean(sourceArr),
+    meanTargetFeeXrp: mean(targetArr),
+  };
+
   const totalRuns = records.length;
   const successCount = successes.length;
   const failureCount = totalRuns - successCount;
   const successRate = totalRuns ? successCount / totalRuns : 0;
-
-  const tps =
-    (typeof batchDurationMs === "number" && batchDurationMs > 0)
-      ? successCount / (batchDurationMs / 1000)
-      : null;
 
   const summary: MetricsSummary = {
     timestampIso: new Date().toISOString(),
@@ -121,8 +170,8 @@ export function computeMetrics(cfg: RunConfig, records: RunRecord[], batchDurati
     failureCount,
     successRate,
     latency: latencyStats,
-    batchDurationMs: batchDurationMs ?? null,
-    tps,
+    costs: costStats,
+    batchDurationMs,
   };
 
   return {

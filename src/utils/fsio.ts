@@ -1,22 +1,7 @@
-// utils/fsio.ts
-//
-// Unified persistence for research artifacts.
-// Writes under data/results/:
-//   - {batchId}.jsonl              : raw RunRecord lines (one per run)
-//   - {batchId}_metrics.json       : MetricsReport (summary + raw arrays)
-//   - {batchId}_metrics.csv        : single-row MetricsSummary for spreadsheets
-//   - all_metrics.csv              : rolling append of all batch summaries
-//
-// Call saveBatchArtifacts(batchId, cfg, records, report) once per batch.
-
 import fs from "node:fs";
 import path from "node:path";
 import type { RunConfig, RunRecord } from "../types";
 import type { MetricsReport, MetricsSummary } from "./metrics";
-
-/* -------------------------------------------------------------------------- */
-/*                                Path helpers                                */
-/* -------------------------------------------------------------------------- */
 
 export interface SavePaths {
   dir: string;
@@ -27,19 +12,16 @@ export interface SavePaths {
 }
 
 export function makePaths(batchId: string): SavePaths {
-  const dir = path.join("data", "results");
+  const dir = path.join("data", "results", batchId);
+
   return {
     dir,
     jsonl: path.join(dir, `${batchId}.jsonl`),
     metricsJson: path.join(dir, `${batchId}_metrics.json`),
     metricsCsv: path.join(dir, `${batchId}_metrics.csv`),
-    allCsv: path.join(dir, "all_metrics.csv"),
+    allCsv: path.join("data", "results", "all_metrics.csv"),
   };
 }
-
-/* -------------------------------------------------------------------------- */
-/*                              Low-level writers                             */
-/* -------------------------------------------------------------------------- */
 
 function ensureDir(filePath: string) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -99,10 +81,6 @@ export function appendCsvRow(
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/*                           Summary → CSV row mapping                        */
-/* -------------------------------------------------------------------------- */
-
 /** Stable, explicit schema for one-row batch CSV. */
 export function summaryToCsvRow(
   s: MetricsSummary,
@@ -129,25 +107,35 @@ export function summaryToCsvRow(
     latency_mean_ms: s.latency.meanMs ?? "",
     latency_std_ms: s.latency.stdDevMs ?? "",
 
+    cost_n: s.costs?.n ?? "",
+    cost_mean_total_xrp: s.costs?.meanTotalXrp ?? "",
+    cost_min_total_xrp: s.costs?.minTotalXrp ?? "",
+    cost_max_total_xrp: s.costs?.maxTotalXrp ?? "",
+    cost_std_total_xrp: s.costs?.stdDevTotalXrp ?? "",
+    cost_mean_bridge_xrp: s.costs?.meanBridgeXrp ?? "",
+    cost_mean_source_fee_xrp: s.costs?.meanSourceFeeXrp ?? "",
+    cost_mean_target_fee_xrp: s.costs?.meanTargetFeeXrp ?? "",
+
     batchDurationMs: s.batchDurationMs ?? "",
-    tps: s.tps ?? "",
 
     xrplUrl: cfg.networks.xrpl.wsUrl,
     evmUrl: cfg.networks.evm.rpcUrl,
   };
 }
 
-/* Keep a fixed header order for reproducibility. */
+
 export const SUMMARY_CSV_HEADERS: string[] = [
   "timestampIso",
   "tag",
   "direction",
   "amountXrp",
   "runsPlanned",
+
   "totalRuns",
   "successCount",
   "failureCount",
   "successRate_pct",
+
   "latency_min_ms",
   "latency_p50_ms",
   "latency_p90_ms",
@@ -156,8 +144,18 @@ export const SUMMARY_CSV_HEADERS: string[] = [
   "latency_max_ms",
   "latency_mean_ms",
   "latency_std_ms",
+
+  "cost_n",
+  "cost_mean_total_xrp",
+  "cost_min_total_xrp",
+  "cost_max_total_xrp",
+  "cost_std_total_xrp",
+  "cost_mean_bridge_xrp",
+  "cost_mean_source_fee_xrp",
+  "cost_mean_target_fee_xrp",
+
   "batchDurationMs",
-  "tps",
+
   "xrplUrl",
   "evmUrl",
 ];
