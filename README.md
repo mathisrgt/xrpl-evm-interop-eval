@@ -1,52 +1,122 @@
-Intro:
-Performance metrics on Axelar bridge from the xrp ledger <> xrpl evm.
-This code take place in a more general study on heterogeneous blockchain bridge performance, with an application envrionment of the XRP Ledger and EVM blockchains.
+# Asset Bridge Performance Tool
 
-Goal:
-This repo allow you to reproduce the test on both testnet and mainnet.
-Give all the code structure and prompt to perform the test, get the result and calculate the metrics.
-Programmed using Typescript and the library xrpl.js and viem.
+## 📖 Introduction
+This repository provides a framework for evaluating **asset bridge performance** across **heterogeneous blockchains** using the **Axelar Protocol**. The framework was developed in the context of a broader academic study on blockchain interoperability (see []()). The tool provides reproducible experiments on cross-chain asset transfers. Contributions to further this work are welcome.
 
-Structure:
-- data/results: artifact of performed bridges used in the article
-- adapters with all the bridge steps flow for each network
-- runners for to handle the data logic of the test (config, context) 
-- utils for displays, files, environment data, time handeling
-- index: entry file with top logic actions
-- types
+## 🔗 Supported Blockchains
+- **XRP Ledger (XRPL)**
+- **XRPL EVM Sidechain**
 
-Steps:
-- Prepare: wallet and client
-- Submit on the source blockchain
-- Observe on the target blockchain
-- Finalize receiving the transaction when receiving on the target blockchain
-- Observe the gas return
-- Finalize the gas return on the source blockchain
+## 🛠️ Features
 
-How to run:
-- clone
-- create an xrpl wallet
-- rename the file .env.example in .env
-- copy and paste the seed (and not the private key!)
-can be easly done on https://xrpl.org/resources/dev-tools/xrp-faucets
-XRPL_WALLET_SEED=
-- create an evm wallet
-- copy and paste the private key in the .env
-EVM_WALLET_PRIVATE_KEY=
-- if not installed, install npm
-- install dependencies npm install
-- to start: npm start
-- answer the questions for the configuration
-- run
+- **Reproducible experiments**  
+  Run standardized bridge experiments through abstracted function calls:  
+  `prepare → submit → observe → observeGasRefund`.
 
-Demo video:
-[youtube link]()
+- **Modular blockchain support**  
+  Extend the framework to new blockchains by simply:
+  - Adding a `[blockchain].adapter.ts` file under `/adapters`  
+  - Defining network parameters in `/runners/network`  
+  - Supplying credentials (e.g., private key, seed) in `.env`
 
-Link to the paper:
+- **Multi-network ready**  
+  Experiments can be reproduced on both **testnet** and **mainnet** environments.
 
-Authors:
-Mathis SERGENT
-Vera RADEVA
-Parisa GHODOUS
-Jean-Patrick
-Nicolas
+- **Performance metrics**  
+  Automatically compute and export latency and cost statistics, including:  
+  - Percentiles (p50, p90, p95, p99)  
+  - Median, mean, minimum, maximum  
+  - Standard deviation
+
+- **Result artifacts**  
+  All runs are saved as JSONL and CSV files in `/data/results/`, enabling direct reuse in analysis or integration with academic papers.
+
+- **TypeScript codebase**  
+  Implemented in **TypeScript**, with strongly typed adapters and utilities for consistency and maintainability.
+
+- **Extensible utilities**  
+  Includes shared modules for logging, metrics, file persistence, environment management, and time handling.
+
+- **Research-oriented design**  
+  Structured for reproducibility and comparability, supporting both case studies and large-scale experimental campaigns.
+
+## 📂 Repository Structure
+- **`data/results/`** – Artifacts of performed bridge runs (JSON/CSV) used in the paper  
+- **`adapters/`** – Chain-specific implementations of bridge steps (XRPL, EVM)  
+- **`runners/`** – Batch execution logic (config, context, orchestration)  
+- **`utils/`** – Shared utilities for logging, metrics, environment handling, file I/O  
+- **`index.ts`** – Entry point that coordinates the top-level logic  
+- **`types.ts`** – Shared TypeScript types and interfaces
+
+## 🔄 Experiment Steps
+Each run follows the same bridging flow:
+
+1. **Prepare** – Initialize wallet and client  
+2. **Submit** – Broadcast the transaction on the source blockchain  
+3. **Observe** – Detect and confirm the transaction on the target blockchain  
+4. **Finalize (Target)** – Record the received transaction on the target chain  
+5. **Observe Gas Refund** – Track the Axelar gas refund process  
+6. **Finalize (Source)** – Confirm refund settlement on the source blockchain 
+
+## 🚀 How to Run
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/mathisrgt/xrpl-evm-interop-eval.git
+   cd xrpl-evm-interop-eval
+   ```
+
+2. **Create an XRPL wallet**
+   - You can easily generate one on the [XRPL Faucet](https://xrpl.org/resources/dev-tools/xrp-faucets).
+   - Copy the **seed** (⚠️ *not the private key*).
+   - Add it to your `.env` file:
+     ```env
+     XRPL_WALLET_SEED=snXXXXXXXXXXXXXXXXXXXX
+     ```
+
+3. **Create an EVM wallet**
+   - Generate a wallet (e.g., with MetaMask or `viem`/`ethers`).
+   - Copy the **private key**.
+   - Add it to your `.env` file:
+     ```env
+     EVM_WALLET_PRIVATE_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+     ```
+
+4. **Prepare environment variables**
+   - Rename `.env.example` → `.env`
+   - Fill in the values as shown above.
+
+5. **Install dependencies**
+   - If npm is not installed, install [Node.js](https://nodejs.org/)
+   - Then run:
+     ```bash
+     npm install
+     ```
+
+6. **Start the tool**
+   ```bash
+   npm start
+   ```
+
+7. **Configure the run**
+   - Answer the interactive prompts (network mode, direction, amount, runs).
+
+8. **Execute experiments**
+   - The program will run the selected tests.
+   - Results (JSON and CSV) are saved under `data/results/`.
+
+
+## 🎥 Demo Video
+A short demonstration of the tool in action is available here:  
+[]()
+
+## 📄 Related Paper
+This repository is part of a broader academic study on blockchain interoperability and bridge performance.  
+The paper is available at: []()
+
+## 👩‍💻 Authors
+- Mathis **SERGENT**
+- Vera **RADEVA**  
+- Parisa **GHODOUS**  
+- Jean-Patrick **GELAS**  
+- Nicolas **FIGAY**
