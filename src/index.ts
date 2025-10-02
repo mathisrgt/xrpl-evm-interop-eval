@@ -96,11 +96,6 @@ async function main() {
                 records.push(failedRecord);
 
                 console.log(chalk.red(`❌ Run ${runNumber}/${cfg.runs} failed: ${errorMessage}`));
-
-                if (runIndex < cfg.runs - 1) {
-                    console.log(chalk.yellow(`\n⚠️  ${cfg.runs - runNumber} run(s) remaining. Continue? (Y/n)`));
-                    await waitWithCountdown(3000, "Continuing...");
-                }
             }
         }
 

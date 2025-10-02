@@ -129,7 +129,7 @@ export function logObserve(ctx: RunContext, output: TargetOutput): void {
     const targetChain = getTargetChain(ctx.cfg.direction);
     const chainName = chalk.bold(targetChain.toUpperCase());
     const amount = formatAmount(output.xrpAmount, 'XRP');
-    const hash = formatTxHash(output.txHash);
+    const hash = output.txHash;
 
     console.log(`\n✅ ${chainName} transfer received`);
     console.log(`Amount: ${amount}`);

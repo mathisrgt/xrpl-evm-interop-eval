@@ -1,31 +1,39 @@
-import { Address } from "viem";
 import { CleanupManager } from "./utils/cleanup";
 
+/** Supported network environments. */
 export type NetworkMode = "testnet" | "mainnet";
 
+/** Direction of a transfer in the bridge tests. */
 export type NetworkDirection = "xrpl_to_evm" | "evm_to_xrpl";
 
+/** Output from the source chain after submitting a transfer. */
 export interface SourceOutput {
-    xrpAmount: number; // Block or Ledger
-    txHash: string; // Source chain submission transaction hash
-    submittedAt: number; // Block or Ledger
+    xrpAmount: number;
+    txHash: string;
+    submittedAt: number;
     txFee: number;
 }
 
+/** Output from the target chain after a transfer is finalized. */
 export interface TargetOutput {
-    xrpAmount: number; // Block or Ledger
-    txHash: string; // Destination chain reception transaction hash
-    finalizedAt: number; // Block or Ledger
+    xrpAmount: number;
+    txHash: string;
+    finalizedAt: number;
     txFee: number;
 }
 
+/** Output when a gas refund is received. */
 export interface GasRefundOutput {
     xrpAmount: number;
     txHash: string;
 }
 
+/** Adapter interface to abstract over XRPL and EVM chains in runs. */
 export interface ChainAdapter {
-    /** One-time client/wallet setup; store handles into ctx.cache */
+    /**
+     * Prepare client/wallet for this chain.
+     * Should store initialized handles into ctx.cache.
+     */
     prepare(ctx: RunContext): Promise<void>;
 
     /** Submit the *source* transfer; args are chain-specific */
@@ -43,25 +51,24 @@ export type NetworkConfig = {
     mode: NetworkMode;
     xrpl: {
         wsUrl: string;
-        walletSeed: string;             // fill from env for real use
-        gateway: string;                // XRPL classic address
+        walletSeed: string;
+        gateway: string;
         gas_fee: string;
     };
     evm: {
         rpcUrl: string;
-        walletPrivateKey: string;       // hex string WITHOUT 0x or WITH? (be consistent in your code)
-        gateway: string;                // EVM contract/router address
-        relayer: string;       
-        gas_refunder: string;        
+        walletPrivateKey: string;
+        gateway: string;
+        relayer: string;      
     };
 };
 
 /** Static inputs for a batch/run (reproducible recipe). */
 export interface RunConfig {
-    tag: string;                  // e.g., "baseline-10"
-    runs: number;                 // e.g., 10
-    xrpAmount: number;            // transfer amount in XRP (human units)
-    direction: NetworkDirection;  // source -> target
+    tag: string;
+    runs: number;
+    xrpAmount: number;
+    direction: NetworkDirection;
     networks: NetworkConfig;
 }
 
@@ -113,11 +120,11 @@ export interface RunContext {
 
 /** Immutable outcome used for analysis & sharing (append to JSONL/CSV). */
 export interface RunRecord {
-    runId: string;              // deterministic ID per run
-    cfg: RunConfig;             // copy of inputs used
-    timestamps: RunTimestamps;  // finalized stamps (some may still be undefined on abort)
-    txs: RunTxs;                // hashes/ids for traceability
-    costs: RunCosts;            // normalized fees (USD) or nulls
-    success: boolean;           // explicit success flag
+    runId: string;
+    cfg: RunConfig;
+    timestamps: RunTimestamps;
+    txs: RunTxs;
+    costs: RunCosts;
+    success: boolean;
     abort_reason?: string;
 }

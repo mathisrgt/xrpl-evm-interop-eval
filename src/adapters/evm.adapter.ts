@@ -1,7 +1,7 @@
 import { createPublicClient, createWalletClient, formatEther, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { xrplevmTestnet } from "viem/chains";
-import { ChainAdapter, RunContext, SourceOutput, TargetOutput, GasRefundOutput } from "../types";
+import { ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../types";
 import { xrplevm } from "../utils/chains";
 import { EVM_WALLET_PRIVATE_KEY } from "../utils/environment";
 
@@ -228,19 +228,17 @@ export const evmAdapter: ChainAdapter = {
                         const recentTxs = data.items.filter((tx: any) => Number(tx.block_number) > current - recentBlocks);
 
                         const gasRefundTx = recentTxs.find((tx: any) => {
-                            const from = tx.from.hash.toLowerCase();
-                            return from === `0x${ctx.cfg.networks.evm.gas_refunder}`;
+                            const to = tx.to.hash.toLowerCase();
+                            return to === account.address.toLocaleLowerCase();
                         });
 
                         if (gasRefundTx) {
                             const refundAmount = Number(formatEther(gasRefundTx.value));
 
-                            console.log(`⛽ EVM gas refund received: ${refundAmount} XRP (${gasRefundTx.hash}) from ${gasRefundTx.from.hash}`);
-
                             finish(() =>
                                 resolve({
                                     xrpAmount: refundAmount,
-                                    txHash: gasRefundTx.hash
+                                    txHash: gasRefundTx.transaction_hash
                                 })
                             );
                         }

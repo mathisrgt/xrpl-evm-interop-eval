@@ -92,7 +92,6 @@ export const xrplAdapter: ChainAdapter = {
                 reject(e instanceof Error ? e : new Error(String(e)));
             };
 
-            // Safety timeout (10 min). Track in cleaner; also cleared on settle.
             const timeoutId = setTimeout(() => {
                 rejectOnce(new Error("⌛️ Timeout: no matching payment on XRPL"));
             }, 10 * 60_000);
@@ -102,27 +101,18 @@ export const xrplAdapter: ChainAdapter = {
                 try {
                     if (!data?.validated) return;
 
-                    // Accept either shape: tx_json (ledger stream) or transaction (account stream)
-                    const tx = data?.tx_json ?? data?.transaction;
+                    const tx = data?.tx_json;
                     const meta = data?.meta;
                     if (!tx || tx.TransactionType !== "Payment") return;
                     if (tx.Destination !== wallet.address) return;
 
-                    // Prefer meta.delivered_amount (drops) for XRP; fallback to tx.Amount if needed
-                    const deliveredDrops =
-                        typeof meta?.delivered_amount === "string"
-                            ? meta.delivered_amount
-                            : (typeof tx?.Amount === "string" ? tx.Amount : "0");
-
-                    const deliveredXrp = Number(dropsToXrp(deliveredDrops));
-                    const txFeeXrp = Number(dropsToXrp(tx.Fee || "0"));
+                    const deliveredXrp = Number(dropsToXrp(meta?.delivered_amount));
+                    const txFeeXrp = Number(dropsToXrp(tx.Fee));
                     const finalizedAt = Date.now();
-
-                    // Optional: neutral logging moved to your logger
 
                     resolveOnce({
                         xrpAmount: deliveredXrp,
-                        txHash: data.hash ?? tx.hash, // cover both shapes
+                        txHash: data.hash,
                         finalizedAt,
                         txFee: txFeeXrp,
                     } as TargetOutput);
@@ -131,13 +121,11 @@ export const xrplAdapter: ChainAdapter = {
                 }
             };
 
-            // Start listening now; we'll subscribe right after
             client.on("transaction", onTx);
 
-            // Subscribe, then register a disposer to unsubscribe (idempotent; try/catch)
             client.request({ command: "subscribe", accounts: [wallet.address] })
                 .then(() => {
-                    // console.log(`🔍 Monitoring transactions for ${wallet.address}`);
+                    console.log(`🔍 Monitoring transactions for ${wallet.address}`);
                     ctx.cleaner.add(async () => {
                         try { client.off("transaction", onTx); } catch { }
                         try {
@@ -208,7 +196,7 @@ export const xrplAdapter: ChainAdapter = {
 
             client.request({ command: "subscribe", accounts: [wallet.address] })
                 .then(() => {
-                    console.log(`🔍 Monitoring transactions for ${wallet.address}`);
+                    console.log(`🔍 Monitoring gas return transaction for ${wallet.address}`);
                     ctx.cleaner.add(async () => {
                         try { client.off("transaction", onRefundTx); } catch { }
                         try { await client.request({ command: "unsubscribe", accounts: [wallet.address] }); } catch { }
