@@ -4,7 +4,6 @@ import { xrplevmTestnet } from "viem/chains";
 import { ChainAdapter, RunContext, SourceOutput, TargetOutput, GasRefundOutput } from "../types";
 import { xrplevm } from "../utils/chains";
 import { EVM_WALLET_PRIVATE_KEY } from "../utils/environment";
-import { formatElapsedMs } from "../utils/time";
 
 export const evmAdapter: ChainAdapter = {
 
@@ -153,7 +152,6 @@ export const evmAdapter: ChainAdapter = {
                         const txFound = recentTxs.find((tx: any) => {
                             const from = tx.from.hash.toLowerCase();
                             return from === '0x0000000000000000000000000000000000000000';
-                            // return from === `0x${ctx.cfg.networks.evm.relayer.toLowerCase()}`; // with the relayer
                         });
 
                         if (txFound) {
@@ -181,6 +179,8 @@ export const evmAdapter: ChainAdapter = {
                     }
                 },
             });
+            
+            ctx.cleaner.trackViemUnwatch(unwatch);
         });
     },
 

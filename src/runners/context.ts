@@ -1,5 +1,6 @@
 import { dropsToXrp } from "xrpl";
 import { RunContext, RunConfig, RunRecord, SourceOutput, TargetOutput, GasRefundOutput } from "../types";
+import { CleanupManager } from "../utils/cleanup";
 
 /**
  * Create a new RunContext with initialized empty state
@@ -26,6 +27,7 @@ export function createRunContext(cfg: RunConfig): RunContext {
             xrpl: undefined,
             evm: undefined,
         },
+        cleaner: new CleanupManager()
     };
 }
 

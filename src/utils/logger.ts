@@ -5,7 +5,6 @@ import readline from "readline";
 import { loadConfig } from "../runners/config";
 import { MetricsSummary } from "./metrics";
 
-// Utility functions
 function formatAddress(address: string, chain: 'xrpl' | 'evm', showPrefix: boolean = false): string {
     if (chain === 'xrpl') {
         return chalk.cyan(address);
@@ -61,8 +60,7 @@ function getTargetChain(direction: NetworkDirection): 'xrpl' | 'evm' {
     return target as 'xrpl' | 'evm';
 }
 
-// Main logging functions
-export function logStep(step: string, details?: string): void {
+export function logStep(step: string): void {
     const separator = chalk.gray('─'.repeat(60));
     console.log(`\n${separator}`);
     console.log(chalk.bold(`📋 ${step.toUpperCase()}`));
@@ -80,7 +78,6 @@ export function logConfig(cfg: RunConfig): void {
         ['Runs', chalk.white(cfg.runs.toString())],
         ['XRPL Gateway', formatAddress(cfg.networks.xrpl.gateway, 'xrpl')],
         ['EVM Gateway', formatAddress(cfg.networks.evm.gateway, 'evm', true)],
-        ['EVM Contract', formatAddress(cfg.networks.evm.relayer, 'evm', true)],
     ];
 
     const maxKeyLength = Math.max(...rows.map(([key]) => key.length));
@@ -92,9 +89,6 @@ export function logConfig(cfg: RunConfig): void {
 }
 
 export function logPrepare(ctx: RunContext): void {
-    // console.log(chalk.bgBlue('════════════ PREPARE ════════════'));
-
-    // XRPL Status
     const xrplReady = !!(ctx.cache.xrpl?.client && ctx.cache.xrpl?.wallet);
     const xrplStatus = xrplReady ? chalk.green('✓') : chalk.red('✗');
     const xrplAddress = ctx.cache.xrpl?.wallet?.address || 'N/A';
@@ -104,7 +98,6 @@ export function logPrepare(ctx: RunContext): void {
     console.log(`Address: ${formatAddress(xrplAddress, 'xrpl')}`);
     console.log(`Endpoint: ${chalk.dim(xrplEndpoint)}\n`);
 
-    // EVM Status  
     const evmReady = !!(ctx.cache.evm?.publicClient && ctx.cache.evm?.walletClient && ctx.cache.evm?.account);
     const evmStatus = evmReady ? chalk.green('✓') : chalk.red('✗');
     const evmAddress = ctx.cache.evm?.account?.address || 'N/A';
@@ -114,12 +107,9 @@ export function logPrepare(ctx: RunContext): void {
     console.log(`Address: ${formatAddress(evmAddress, 'evm')}`);
     console.log(`Endpoint: ${chalk.dim(evmEndpoint)}\n`);
 
-    // Gateway addresses
     console.log(`${chalk.dim('XRPL Gateway')}: ${formatAddress(ctx.cfg.networks.xrpl.gateway, 'xrpl')}`);
     console.log(`${chalk.dim('EVM Gateway')}: ${formatAddress(ctx.cfg.networks.evm.gateway, 'evm', true)}`);
-    console.log(`${chalk.dim('EVM Contract')}: ${formatAddress(ctx.cfg.networks.evm.relayer, 'evm', true)}`);
 
-    // Overall status
     const allReady = xrplReady && evmReady;
     const overallStatus = allReady ? chalk.green('✅ All systems ready') : chalk.red('Some systems not ready\n');
     console.log(`${overallStatus}`);
@@ -129,7 +119,6 @@ export function logSubmit(ctx: RunContext, srcOutput: SourceOutput) {
     const sourceChain = getSourceChain(ctx.cfg.direction);
     const chainName = chalk.bold(sourceChain.toUpperCase());
     const amount = formatAmount(srcOutput.xrpAmount, 'XRP');
-    // const hash = formatTxHash(srcOutput.txHash);
 
     console.log(`📤 ${chainName} transaction submitted`);
     console.log(`Amount: ${amount}`);
@@ -153,7 +142,6 @@ export function logObserve(ctx: RunContext, output: TargetOutput): void {
 }
 
 export function logRecord(record: RunRecord): void {
-    // Run identification
     console.log(`${chalk.bold('Run ID')}: ${chalk.cyan(record.runId)}`);
     console.log(`${chalk.bold('Success')}: ${record.success ? chalk.green('✓ YES') : chalk.red('✗ NO')}`);
 
@@ -161,7 +149,7 @@ export function logRecord(record: RunRecord): void {
         console.log(`${chalk.bold('Abort Reason')}: ${chalk.red(record.abort_reason)}`);
     }
 
-    console.log(''); // spacing
+    console.log('');
 
     function formatTimeOnly(timestamp: number): string {
         return new Date(timestamp).toTimeString().split(' ')[0];
@@ -189,7 +177,7 @@ export function logRecord(record: RunRecord): void {
         console.log(`${chalk.bold('Total latency')}: ${chalk.green(formattedLatency)}`);
     }
 
-    console.log(''); // spacing
+    console.log('');
 
     // Cost information
     const costs = record.costs;
@@ -217,16 +205,6 @@ export function logError(message: string, context?: string, error?: Error): void
     if (error?.stack) {
         console.error(chalk.dim(error.stack));
     }
-}
-
-/**
- * Create readline interface for user input
- */
-function createReadlineInterface() {
-    return readline.createInterface({
-        input: process.stdin,
-        output: process.stdout
-    });
 }
 
 /**
@@ -383,7 +361,10 @@ async function confirmConfiguration(rl: readline.Interface, config: RunConfig): 
 
 
 export async function showMenu(): Promise<RunConfig> {
-    const rl = createReadlineInterface();
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+    });
 
     try {
         displayBanner();
@@ -413,12 +394,6 @@ export async function showMenu(): Promise<RunConfig> {
     }
 }
 
-/** Safe number → fixed string or 'N/A' */
-function fx(n?: number | null, digits = 2): string {
-    if (n == null || Number.isNaN(n)) return "N/A";
-    return n.toFixed(digits);
-}
-
 /** Render ms; if > 1000ms, add "(Xs)" hint */
 function fxMs(ms?: number | null): string {
     if (ms == null || Number.isNaN(ms)) return "N/A";
@@ -431,7 +406,7 @@ function fxMs(ms?: number | null): string {
  * Neutral wording; chain-agnostic; no currency.
  */
 export function displayMetrics(metrics: MetricsSummary): void {
-    console.log(chalk.bold.cyan("\nConfiguration:"));
+    console.log(chalk.bold("\nConfiguration:"));
     console.log(`  Tag:              ${chalk.white(metrics.tag)}`);
     console.log(`  Direction:        ${chalk.white(metrics.direction)}`);
     console.log(`  Amount (XRP):     ${chalk.white(String(metrics.xrpAmount))}`);
@@ -450,11 +425,11 @@ export function displayMetrics(metrics: MetricsSummary): void {
         console.log(`  Min:              ${chalk.cyan(fxMs(metrics.latency.minMs))}`);
         console.log(`  P50 (Median):     ${chalk.cyan(fxMs(metrics.latency.p50Ms))}`);
         console.log(`  P90:              ${chalk.cyan(fxMs(metrics.latency.p90Ms))}`);
-        console.log(`  P95:              ${chalk.yellow(fxMs(metrics.latency.p95Ms))}`);
-        console.log(`  P99:              ${chalk.yellow(fxMs(metrics.latency.p99Ms))}`);
+        console.log(`  P95:              ${chalk.cyan.bold(fxMs(metrics.latency.p95Ms))}`);
+        console.log(`  P99:              ${chalk.cyan.bold(fxMs(metrics.latency.p99Ms))}`);
         console.log(`  Max:              ${chalk.cyan(fxMs(metrics.latency.maxMs))}`);
-        console.log(`  Mean:             ${chalk.white(fx(metrics.latency.meanMs))}`);
-        console.log(`  Std Dev:          ${chalk.dim(fx(metrics.latency.stdDevMs))}`);
+        console.log(`  Mean:             ${chalk.white(fxMs(metrics.latency.meanMs))}`);
+        console.log(`  Std Dev:          ${chalk.dim(fxMs(metrics.latency.stdDevMs))}`);
     } else {
         console.log(chalk.red("\n⚠️  No successful runs to analyze."));
     }

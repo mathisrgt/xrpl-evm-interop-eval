@@ -25,9 +25,9 @@ async function main() {
     let successCount = 0;
     let failureCount = 0;
     const batchStartTime = Date.now();
+    const ctx = createRunContext(cfg);
 
     try {
-        const ctx = createRunContext(cfg);
         logStep("prepare");
         updateTimestamp(ctx, 't0_prepare');
         await runner.prepare(ctx);
@@ -64,7 +64,7 @@ async function main() {
                 await waitWithCountdown(10000, "Waiting for gas refund transaction...");
                 const gasRfdOutput = await runner.observeGasRefund(runCtx);
                 updateTimestamp(runCtx, 't4_finalized_gas_refund', srcOutput.submittedAt);
-                console.log(`✅ Gas refund received: ${gasRfdOutput.xrpAmount} XRP (${gasRfdOutput.txHash})`);
+                console.log(`⛽ Gas refund received: ${gasRfdOutput.xrpAmount} XRP (${gasRfdOutput.txHash})`);
 
                 logStep("record")
                 const record = createRunRecord(runCtx, srcOutput, trgOutput, true, gasRfdOutput);
@@ -117,15 +117,7 @@ async function main() {
         logError("Fatal error during batch execution", "BATCH_ERROR", err instanceof Error ? err : undefined);
         console.error(err);
     } finally {
-        const ctx = createRunContext(cfg);
-        if (ctx.cache.xrpl?.client) {
-            try {
-                await ctx.cache.xrpl.client.disconnect();
-                console.log(chalk.dim("🔌 Disconnected from XRPL"));
-            } catch (err) {
-                console.warn(chalk.yellow("⚠️  Failed to disconnect XRPL client"));
-            }
-        }
+        await ctx.cleaner.run();
     }
 }
 

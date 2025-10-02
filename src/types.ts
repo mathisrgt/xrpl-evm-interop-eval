@@ -1,4 +1,5 @@
 import { Address } from "viem";
+import { CleanupManager } from "./utils/cleanup";
 
 export type NetworkMode = "testnet" | "mainnet";
 
@@ -45,7 +46,6 @@ export type NetworkConfig = {
         walletSeed: string;             // fill from env for real use
         gateway: string;                // XRPL classic address
         gas_fee: string;
-        gas_refunder: string;   
     };
     evm: {
         rpcUrl: string;
@@ -108,6 +108,7 @@ export interface RunContext {
             chain: import("viem").Chain;
         };
     };
+    cleaner: CleanupManager;
 }
 
 /** Immutable outcome used for analysis & sharing (append to JSONL/CSV). */

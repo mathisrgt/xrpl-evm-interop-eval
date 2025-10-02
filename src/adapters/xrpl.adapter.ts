@@ -11,6 +11,7 @@ export const xrplAdapter: ChainAdapter = {
 
         const wallet = Wallet.fromSeed(ctx.cfg.networks.xrpl.walletSeed);
         ctx.cache.xrpl = { client, wallet };
+        ctx.cleaner.trackXrpl(client, wallet.address);
     },
 
     /** Submit XRPL Payment with optional memos */
@@ -75,67 +76,77 @@ export const xrplAdapter: ChainAdapter = {
         return await new Promise<TargetOutput>((resolve, reject) => {
             let finished = false;
 
-            const cleanup = async () => {
+            const resolveOnce = (v: TargetOutput) => {
                 if (finished) return;
                 finished = true;
-                clearTimeout(timeoutId);
-                client.off("transaction", onTx);
-                try {
-                    await client.request({ command: "unsubscribe", accounts: [wallet.address] });
-                } catch (err) {
-                    console.warn("Failed to unsubscribe from XRPL:", err);
-                }
+                try { clearTimeout(timeoutId); } catch { }
+                try { client.off("transaction", onTx); } catch { }
+                resolve(v);
             };
 
+            const rejectOnce = (e: unknown) => {
+                if (finished) return;
+                finished = true;
+                try { clearTimeout(timeoutId); } catch { }
+                try { client.off("transaction", onTx); } catch { }
+                reject(e instanceof Error ? e : new Error(String(e)));
+            };
+
+            // Safety timeout (10 min). Track in cleaner; also cleared on settle.
             const timeoutId = setTimeout(() => {
-                cleanup().then(() => reject(new Error("⌛️ Timeout: no matching payment on XRPL")));
+                rejectOnce(new Error("⌛️ Timeout: no matching payment on XRPL"));
             }, 10 * 60_000);
+            ctx.cleaner.trackTimer(timeoutId);
 
             const onTx = (data: any) => {
-                // console.log("new tx!: ", data);
-
                 try {
-                    // Only consider validated ledgers
                     if (!data?.validated) return;
 
-                    const tx = data?.tx_json;
+                    // Accept either shape: tx_json (ledger stream) or transaction (account stream)
+                    const tx = data?.tx_json ?? data?.transaction;
                     const meta = data?.meta;
                     if (!tx || tx.TransactionType !== "Payment") return;
                     if (tx.Destination !== wallet.address) return;
 
-                    console.log(`📦 Received payment: ${data.hash} from ${tx.Account}`);
+                    // Prefer meta.delivered_amount (drops) for XRP; fallback to tx.Amount if needed
+                    const deliveredDrops =
+                        typeof meta?.delivered_amount === "string"
+                            ? meta.delivered_amount
+                            : (typeof tx?.Amount === "string" ? tx.Amount : "0");
 
-                    const delivered = meta?.delivered_amount;
-                    const deliveredXrp = Number(dropsToXrp(delivered));
-
+                    const deliveredXrp = Number(dropsToXrp(deliveredDrops));
+                    const txFeeXrp = Number(dropsToXrp(tx.Fee || "0"));
                     const finalizedAt = Date.now();
 
-                    const txFee = Number(dropsToXrp(tx.Fee || "0"));
+                    // Optional: neutral logging moved to your logger
 
-                    cleanup().then(() =>
-                        resolve({
-                            xrpAmount: deliveredXrp,
-                            txHash: data.hash,
-                            finalizedAt,
-                            txFee
-                        } as TargetOutput)
-                    );
+                    resolveOnce({
+                        xrpAmount: deliveredXrp,
+                        txHash: data.hash ?? tx.hash, // cover both shapes
+                        finalizedAt,
+                        txFee: txFeeXrp,
+                    } as TargetOutput);
                 } catch (err) {
-                    console.error("Error processing XRPL transaction:", err);
-                    cleanup().then(() => reject(err instanceof Error ? err : new Error(String(err))));
+                    rejectOnce(err);
                 }
             };
 
+            // Start listening now; we'll subscribe right after
             client.on("transaction", onTx);
 
-            client
-                .request({ command: "subscribe", accounts: [wallet.address] })
+            // Subscribe, then register a disposer to unsubscribe (idempotent; try/catch)
+            client.request({ command: "subscribe", accounts: [wallet.address] })
                 .then(() => {
-                    console.log(`🔍 Monitoring transactions for ${wallet.address}`);
+                    // console.log(`🔍 Monitoring transactions for ${wallet.address}`);
+                    ctx.cleaner.add(async () => {
+                        try { client.off("transaction", onTx); } catch { }
+                        try {
+                            await client.request({ command: "unsubscribe", accounts: [wallet.address] });
+                        } catch { }
+                    });
                 })
                 .catch((err: unknown) => {
-                    console.error("Failed to subscribe to XRPL transactions:", err);
-                    cleanup().then(() => reject(err instanceof Error ? err : new Error(String(err))));
+                    rejectOnce(err);
                 });
         });
     },
@@ -148,59 +159,64 @@ export const xrplAdapter: ChainAdapter = {
         const { client, wallet } = ctx.cache.xrpl!;
         if (!client || !wallet) throw new Error("XRPL not prepared");
 
+        return await new Promise<GasRefundOutput>((resolve, reject) => {
+            let finished = false;
 
+            const resolveOnce = (v: GasRefundOutput) => {
+                if (finished) return;
+                finished = true;
+                try { clearTimeout(timeoutId); } catch { }
+                try { client.off("transaction", onRefundTx); } catch { }
+                resolve(v);
+            };
 
-        return new Promise((resolve, reject) => {
-            console.log(chalk.gray("Gas return ignored"));
-            resolve({
-                xrpAmount: 0,
-                txHash: "0x"
-            })
-            //     let finished = false;
+            const rejectOnce = (e: unknown) => {
+                if (finished) return;
+                finished = true;
+                try { clearTimeout(timeoutId); } catch { }
+                try { client.off("transaction", onRefundTx); } catch { }
+                reject(e instanceof Error ? e : new Error(String(e)));
+            };
 
-            //     const cleanup = async () => {
-            //         if (finished) return;
-            //         finished = true;
-            //         clearTimeout(timeoutId);
-            //         client.off("transaction", onRefundTx);
-            //     };
+            const timeoutId = setTimeout(() => {
+                rejectOnce(new Error("Gas refund timeout"));
+            }, 5 * 60_000);
+            ctx.cleaner.trackTimer(timeoutId);
 
-            //     const timeoutId = setTimeout(() => {
-            //         cleanup().then(() => reject(new Error("Gas refund timeout")));
-            //     }, 5 * 60_000);
+            const onRefundTx = (data: any) => {
+                try {
+                    if (!data?.validated) return;
 
-            //     const onRefundTx = (data: any) => {
-            //         if (!data?.validated) return;
+                    const tx = data?.tx_json;
+                    const meta = data?.meta;
 
-            //         console.log("new tx: ", data);
+                    if (!tx || tx.TransactionType !== "Payment") return;
+                    if (tx.Destination !== wallet.address) return;
 
-            //         const tx = data?.tx_json;
-            //         const meta = data?.meta;
+                    const refundXrp = Number(dropsToXrp(meta?.delivered_amount));
 
-            //         if (!tx || tx.TransactionType !== "Payment") return;
-            //         if (tx.Destination !== wallet.address) return;
+                    resolveOnce({
+                        xrpAmount: refundXrp,
+                        txHash: data.hash,
+                    });
+                } catch (err) {
+                    rejectOnce(err);
+                }
+            };
 
-            //         const refundAmount = Number(dropsToXrp(meta?.delivered_amount));
+            client.on("transaction", onRefundTx);
 
-            //         console.log(`⛽ Gas refund received: ${refundAmount} XRP from ${tx.Account}`);
-
-            //         cleanup().then(() =>
-            //             resolve({
-            //                 xrpAmount: refundAmount,
-            //                 txHash: data.hash
-            //             })
-            //         );
-            //     };
-
-            //     client
-            //         .request({ command: "subscribe", accounts: [wallet.address] })
-            //         .then(() => {
-            //             console.log(`🔍 Monitoring transactions for ${wallet.address}`);
-            //             client.on("transaction", onRefundTx);
-            //         })
-            //         .catch((err: unknown) => {
-            //             cleanup().then(() => reject(err instanceof Error ? err : new Error(String(err))));
-            //         });
-            });
-        }
+            client.request({ command: "subscribe", accounts: [wallet.address] })
+                .then(() => {
+                    console.log(`🔍 Monitoring transactions for ${wallet.address}`);
+                    ctx.cleaner.add(async () => {
+                        try { client.off("transaction", onRefundTx); } catch { }
+                        try { await client.request({ command: "unsubscribe", accounts: [wallet.address] }); } catch { }
+                    });
+                })
+                .catch((err: unknown) => {
+                    rejectOnce(err);
+                });
+        });
+    }
 };
