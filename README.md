@@ -28,6 +28,8 @@ This repository provides a framework for evaluating **asset bridge performance**
   - Median, mean, minimum, maximum  
   - Standard deviation
 
+Read more of the metrics here: [ARTIFACT.md](./ARTIFACT.md)
+
 - **Result artifacts**  
   All runs are saved as JSONL and CSV files in `/data/results/`, enabling direct reuse in analysis or integration with academic papers.
 
@@ -120,3 +122,8 @@ The paper is available at: []()
 - Parisa **GHODOUS**  
 - Jean-Patrick **GELAS**  
 - Nicolas **FIGAY**
+
+## 🕵️ Reviewers
+
+- 
+- 

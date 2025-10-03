@@ -175,13 +175,10 @@ export function saveBatchArtifacts(
 ): SavePaths {
   const paths = makePaths(batchId);
 
-  // 1) Raw runs as JSONL (one per line)
   for (const r of records) appendJsonl(paths.jsonl, r);
 
-  // 2) Summary JSON (metrics report)
   writeJsonAtomic(paths.metricsJson, report);
 
-  // 3) Single-row CSV for the batch + 4) Append to global CSV
   const row = summaryToCsvRow(report.summary, cfg);
   writeCsv(paths.metricsCsv, [row]);
   appendCsvRow(paths.allCsv, SUMMARY_CSV_HEADERS, row);
