@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { RunConfig, RunRecord, NetworkDirection, RunContext } from "../types";
+import type { RunConfig, RunRecord, NetworkDirection, RunContext, NetworkMode } from "../types";
 import type { MetricsReport, MetricsSummary } from "./metrics";
 
 export interface SavePaths {
@@ -12,8 +12,10 @@ export interface SavePaths {
   allCsv: string;
 }
 
-export function makePaths(batchId: string, direction: NetworkDirection): SavePaths {
-  const directionFolder = path.join("data", "results", direction);
+export function makePaths(batchId: string, direction: NetworkDirection, mode: NetworkMode): SavePaths {
+  // Create folder structure: data/results/{mode}/{direction}/{batchId}
+  const modeFolder = path.join("data", "results", mode);
+  const directionFolder = path.join(modeFolder, direction);
   const dir = path.join(directionFolder, batchId);
 
   return {
@@ -123,6 +125,7 @@ export function summaryToCsvRow(
 ): Record<string, string | number> {
   return {
     timestampIso: s.timestampIso,
+    mode: cfg.networks.mode,
     tag: s.tag,
     direction: s.direction,
     amountXrp: s.xrpAmount,
@@ -162,6 +165,7 @@ export function summaryToCsvRow(
 
 export const SUMMARY_CSV_HEADERS: string[] = [
   "timestampIso",
+  "mode",
   "tag",
   "direction",
   "amountXrp",
@@ -199,10 +203,10 @@ export const SUMMARY_CSV_HEADERS: string[] = [
 ];
 
 /**
- * Read all batch metrics from a direction folder and compute aggregate statistics
+ * Read all batch metrics from a direction+mode folder and compute aggregate statistics
  */
-export function computeDirectionSummary(direction: NetworkDirection): MetricsSummary | null {
-  const directionFolder = path.join("data", "results", direction);
+export function computeDirectionSummary(direction: NetworkDirection, mode: NetworkMode): MetricsSummary | null {
+  const directionFolder = path.join("data", "results", mode, direction);
   
   if (!fs.existsSync(directionFolder)) {
     return null;
@@ -292,7 +296,7 @@ export function computeDirectionSummary(direction: NetworkDirection): MetricsSum
 
   const aggregatedSummary: MetricsSummary = {
     timestampIso: new Date().toISOString(),
-    tag: `${direction}_aggregated`,
+    tag: `${mode}_${direction}_aggregated`,
     direction,
     xrpAmount: allSummaries[0]?.xrpAmount || 0,
     runsPlanned: allSummaries.reduce((sum, s) => sum + s.runsPlanned, 0),
@@ -346,7 +350,7 @@ export function saveBatchArtifacts(
   records: RunRecord[],
   report: MetricsReport
 ): SavePaths {
-  const paths = makePaths(batchId, cfg.direction);
+  const paths = makePaths(batchId, cfg.direction, cfg.networks.mode);
   const xrplAddress = ctx.cache.xrpl?.wallet.address!;
   const evmAddress = ctx.cache.evm?.account.address!;
 
@@ -372,12 +376,12 @@ export function saveBatchArtifacts(
   
   appendCsvRow(paths.allCsv, SUMMARY_CSV_HEADERS, row);
 
-  const directionSummary = computeDirectionSummary(cfg.direction);
+  const directionSummary = computeDirectionSummary(cfg.direction, cfg.networks.mode);
   if (directionSummary) {
-    const directionSummaryFile = path.join("data", "results", cfg.direction, `${cfg.direction}_aggregated_metrics.json`);
+    const directionSummaryFile = path.join("data", "results", cfg.networks.mode, cfg.direction, `${cfg.direction}_aggregated_metrics.json`);
     writeJsonAtomic(directionSummaryFile, {
       summary: directionSummary,
-      batchCount: fs.readdirSync(path.join("data", "results", cfg.direction), { withFileTypes: true })
+      batchCount: fs.readdirSync(path.join("data", "results", cfg.networks.mode, cfg.direction), { withFileTypes: true })
         .filter(d => d.isDirectory()).length,
       lastUpdated: new Date().toISOString(),
     });

@@ -1,0 +1,51 @@
+{
+  "summary": {
+    "timestampIso": "2025-10-04T16:58:03.437Z",
+    "tag": "testnet_xrpl_to_evm_1759596775355",
+    "direction": "xrpl_to_evm",
+    "xrpAmount": 4,
+    "runsPlanned": 2,
+    "totalRuns": 2,
+    "successCount": 2,
+    "failureCount": 0,
+    "successRate": 1,
+    "latency": {
+      "n": 2,
+      "minMs": 94925,
+      "p50Ms": 123448.5,
+      "p90Ms": 146267.30000000002,
+      "p95Ms": 149119.65,
+      "p99Ms": 151401.53,
+      "maxMs": 151972,
+      "meanMs": 123448.5,
+      "stdDevMs": 28523.5
+    },
+    "costs": {
+      "n": 2,
+      "meanTotalXrp": 2.4246305,
+      "minTotalXrp": 2.411377,
+      "maxTotalXrp": 2.437884,
+      "stdDevTotalXrp": 0.01325350000000003,
+      "meanBridgeXrp": 0.12461850000000019,
+      "meanSourceFeeXrp": 0.000012,
+      "meanTargetFeeXrp": 0.03880419402
+    },
+    "batchDurationMs": 306946
+  },
+  "latenciesMs": [
+    151972,
+    94925
+  ],
+  "failureReasons": {},
+  "cfgEcho": {
+    "tag": "testnet_xrpl_to_evm_1759596775355",
+    "mode": "testnet",
+    "direction": "xrpl_to_evm",
+    "xrpAmount": 4,
+    "runs": 2,
+    "xrplUrl": "wss://s.altnet.rippletest.net:51233",
+    "evmUrl": "https://rpc.testnet.xrplevm.org",
+    "xrplAddress": "rDXtwcWB4ghQhrDaCEynemWyLqHPDmo1Kt",
+    "evmAddress": "0xa43F293D412856F5ebE3a6B49d41654A18CF93a4"
+  }
+}
