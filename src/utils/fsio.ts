@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { RunConfig, RunRecord, NetworkDirection } from "../types";
+import type { RunConfig, RunRecord, NetworkDirection, RunContext } from "../types";
 import type { MetricsReport, MetricsSummary } from "./metrics";
 
 export interface SavePaths {
@@ -13,7 +13,6 @@ export interface SavePaths {
 }
 
 export function makePaths(batchId: string, direction: NetworkDirection): SavePaths {
-  // New structure: data/results/{direction}/{batchId}/
   const directionFolder = path.join("data", "results", direction);
   const dir = path.join(directionFolder, batchId);
 
@@ -24,6 +23,37 @@ export function makePaths(batchId: string, direction: NetworkDirection): SavePat
     metricsCsv: path.join(dir, `${batchId}_metrics.csv`),
     directionSummaryCsv: path.join(directionFolder, `${direction}_summary.csv`),
     allCsv: path.join("data", "results", "all_metrics.csv"),
+  };
+}
+
+/**
+ * Sanitize sensitive credentials from config before saving
+ * Replaces seed/private key with public addresses
+ */
+function sanitizeConfig(cfg: RunConfig, xrplAddress: string, evmAddress: string): RunConfig {
+  return {
+    ...cfg,
+    networks: {
+      ...cfg.networks,
+      xrpl: {
+        ...cfg.networks.xrpl,
+        walletSeed: `[REDACTED - Address: ${xrplAddress}]`,
+      },
+      evm: {
+        ...cfg.networks.evm,
+        walletPrivateKey: `[REDACTED - Address: ${evmAddress}]`,
+      },
+    },
+  };
+}
+
+/**
+ * Sanitize a RunRecord by replacing credentials with addresses
+ */
+function sanitizeRecord(record: RunRecord, xrplAddress: string, evmAddress: string): RunRecord {
+  return {
+    ...record,
+    cfg: sanitizeConfig(record.cfg, xrplAddress, evmAddress),
   };
 }
 
@@ -87,7 +117,9 @@ export function appendCsvRow(
 /** Stable, explicit schema for one-row batch CSV. */
 export function summaryToCsvRow(
   s: MetricsSummary,
-  cfg: RunConfig
+  cfg: RunConfig,
+  xrplAddress: string,
+  evmAddress: string
 ): Record<string, string | number> {
   return {
     timestampIso: s.timestampIso,
@@ -122,7 +154,9 @@ export function summaryToCsvRow(
     batchDurationMs: s.batchDurationMs ?? "",
 
     xrplUrl: cfg.networks.xrpl.wsUrl,
+    xrplAddress: xrplAddress,
     evmUrl: cfg.networks.evm.rpcUrl,
+    evmAddress: evmAddress,
   };
 }
 
@@ -159,7 +193,9 @@ export const SUMMARY_CSV_HEADERS: string[] = [
   "batchDurationMs",
 
   "xrplUrl",
+  "xrplAddress",
   "evmUrl",
+  "evmAddress",
 ];
 
 /**
@@ -200,13 +236,11 @@ export function computeDirectionSummary(direction: NetworkDirection): MetricsSum
     return null;
   }
 
-  // Aggregate statistics across all batches
   const totalRuns = allSummaries.reduce((sum, s) => sum + s.totalRuns, 0);
   const successCount = allSummaries.reduce((sum, s) => sum + s.successCount, 0);
   const failureCount = allSummaries.reduce((sum, s) => sum + s.failureCount, 0);
   const successRate = totalRuns > 0 ? successCount / totalRuns : 0;
 
-  // Collect all latency values from successful runs
   const allLatencies: number[] = [];
   const allCosts: number[] = [];
   const allBridgeCosts: number[] = [];
@@ -214,7 +248,6 @@ export function computeDirectionSummary(direction: NetworkDirection): MetricsSum
   const allTargetFees: number[] = [];
 
   for (const summary of allSummaries) {
-    // Read individual batch records to get raw data
     const batchFolder = batchFolders.find(f => summary.tag.includes(f.split('_')[0]));
     if (batchFolder) {
       const jsonlFile = path.join(directionFolder, batchFolder, `${batchFolder}.jsonl`);
@@ -239,7 +272,6 @@ export function computeDirectionSummary(direction: NetworkDirection): MetricsSum
     }
   }
 
-  // Calculate aggregate statistics
   allLatencies.sort((a, b) => a - b);
   
   const mean = (arr: number[]) => arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null;
@@ -262,7 +294,7 @@ export function computeDirectionSummary(direction: NetworkDirection): MetricsSum
     timestampIso: new Date().toISOString(),
     tag: `${direction}_aggregated`,
     direction,
-    xrpAmount: allSummaries[0]?.xrpAmount || 0, // Use first batch's amount
+    xrpAmount: allSummaries[0]?.xrpAmount || 0,
     runsPlanned: allSummaries.reduce((sum, s) => sum + s.runsPlanned, 0),
     
     totalRuns,
@@ -301,34 +333,45 @@ export function computeDirectionSummary(direction: NetworkDirection): MetricsSum
 
 /**
  * Persist everything for a batch in one call.
- * - Raw records → JSONL
- * - Metrics report → JSON
- * - Metrics summary → CSV (single row)
+ * - Raw records → JSONL (sanitized)
+ * - Metrics report → JSON (sanitized)
+ * - Metrics summary → CSV (single row with addresses)
  * - Append to direction-specific summary CSV
  * - Append to rolling all_metrics.csv
  */
 export function saveBatchArtifacts(
   batchId: string,
   cfg: RunConfig,
+  ctx: RunContext,
   records: RunRecord[],
   report: MetricsReport
 ): SavePaths {
   const paths = makePaths(batchId, cfg.direction);
+  const xrplAddress = ctx.cache.xrpl?.wallet.address!;
+  const evmAddress = ctx.cache.evm?.account.address!;
 
-  // Save batch-specific files
-  for (const r of records) appendJsonl(paths.jsonl, r);
-  writeJsonAtomic(paths.metricsJson, report);
+  for (const r of records) {
+    const sanitized = sanitizeRecord(r, xrplAddress, evmAddress);
+    appendJsonl(paths.jsonl, sanitized);
+  }
 
-  const row = summaryToCsvRow(report.summary, cfg);
+  const sanitizedReport = {
+    ...report,
+    cfgEcho: {
+      ...report.cfgEcho,
+      xrplAddress,
+      evmAddress,
+    }
+  };
+  writeJsonAtomic(paths.metricsJson, sanitizedReport);
+
+  const row = summaryToCsvRow(report.summary, cfg, xrplAddress, evmAddress);
   writeCsv(paths.metricsCsv, [row]);
   
-  // Append to direction-specific summary
   appendCsvRow(paths.directionSummaryCsv, SUMMARY_CSV_HEADERS, row);
   
-  // Append to global summary
   appendCsvRow(paths.allCsv, SUMMARY_CSV_HEADERS, row);
 
-  // Compute and save updated direction summary
   const directionSummary = computeDirectionSummary(cfg.direction);
   if (directionSummary) {
     const directionSummaryFile = path.join("data", "results", cfg.direction, `${cfg.direction}_aggregated_metrics.json`);

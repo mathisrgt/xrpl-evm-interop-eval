@@ -105,7 +105,7 @@ async function main() {
             displayMetrics(metricsReport.summary);
 
             console.log(chalk.bold('\n💾 Saving batch records...'));
-            saveBatchArtifacts(batchId, cfg, records, metricsReport);
+            saveBatchArtifacts(batchId, cfg, ctx, records, metricsReport);
             console.log(chalk.green(`✅ Batch saved: ${batchId}`));
         }
     } catch (err) {
