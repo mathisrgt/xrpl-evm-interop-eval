@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { RunConfig, RunRecord } from "../types";
+import type { RunConfig, RunRecord, NetworkDirection } from "../types";
 import type { MetricsReport, MetricsSummary } from "./metrics";
 
 export interface SavePaths {
@@ -8,17 +8,21 @@ export interface SavePaths {
   jsonl: string;
   metricsJson: string;
   metricsCsv: string;
+  directionSummaryCsv: string;
   allCsv: string;
 }
 
-export function makePaths(batchId: string): SavePaths {
-  const dir = path.join("data", "results", batchId);
+export function makePaths(batchId: string, direction: NetworkDirection): SavePaths {
+  // New structure: data/results/{direction}/{batchId}/
+  const directionFolder = path.join("data", "results", direction);
+  const dir = path.join(directionFolder, batchId);
 
   return {
     dir,
     jsonl: path.join(dir, `${batchId}.jsonl`),
     metricsJson: path.join(dir, `${batchId}_metrics.json`),
     metricsCsv: path.join(dir, `${batchId}_metrics.csv`),
+    directionSummaryCsv: path.join(directionFolder, `${direction}_summary.csv`),
     allCsv: path.join("data", "results", "all_metrics.csv"),
   };
 }
@@ -44,7 +48,6 @@ export function writeJsonAtomic(file: string, obj: unknown) {
 /** RFC4180-safe CSV escaping. */
 function csvEscape(v: unknown): string {
   const s = v == null ? "" : String(v);
-  // quote if contains comma, quote, newline/CR, or leading/trailing spaces
   const needsQuote = /[",\n\r]/.test(s) || /^\s|\s$/.test(s);
   const q = s.replace(/"/g, '""');
   return needsQuote ? `"${q}"` : q;
@@ -123,7 +126,6 @@ export function summaryToCsvRow(
   };
 }
 
-
 export const SUMMARY_CSV_HEADERS: string[] = [
   "timestampIso",
   "tag",
@@ -161,10 +163,148 @@ export const SUMMARY_CSV_HEADERS: string[] = [
 ];
 
 /**
+ * Read all batch metrics from a direction folder and compute aggregate statistics
+ */
+export function computeDirectionSummary(direction: NetworkDirection): MetricsSummary | null {
+  const directionFolder = path.join("data", "results", direction);
+  
+  if (!fs.existsSync(directionFolder)) {
+    return null;
+  }
+
+  const batchFolders = fs.readdirSync(directionFolder, { withFileTypes: true })
+    .filter(dirent => dirent.isDirectory())
+    .map(dirent => dirent.name);
+
+  if (batchFolders.length === 0) {
+    return null;
+  }
+
+  const allSummaries: MetricsSummary[] = [];
+
+  for (const batchFolder of batchFolders) {
+    const metricsFile = path.join(directionFolder, batchFolder, `${batchFolder}_metrics.json`);
+    
+    if (fs.existsSync(metricsFile)) {
+      try {
+        const content = fs.readFileSync(metricsFile, 'utf-8');
+        const report: MetricsReport = JSON.parse(content);
+        allSummaries.push(report.summary);
+      } catch (err) {
+        console.warn(`Failed to read metrics from ${metricsFile}:`, err);
+      }
+    }
+  }
+
+  if (allSummaries.length === 0) {
+    return null;
+  }
+
+  // Aggregate statistics across all batches
+  const totalRuns = allSummaries.reduce((sum, s) => sum + s.totalRuns, 0);
+  const successCount = allSummaries.reduce((sum, s) => sum + s.successCount, 0);
+  const failureCount = allSummaries.reduce((sum, s) => sum + s.failureCount, 0);
+  const successRate = totalRuns > 0 ? successCount / totalRuns : 0;
+
+  // Collect all latency values from successful runs
+  const allLatencies: number[] = [];
+  const allCosts: number[] = [];
+  const allBridgeCosts: number[] = [];
+  const allSourceFees: number[] = [];
+  const allTargetFees: number[] = [];
+
+  for (const summary of allSummaries) {
+    // Read individual batch records to get raw data
+    const batchFolder = batchFolders.find(f => summary.tag.includes(f.split('_')[0]));
+    if (batchFolder) {
+      const jsonlFile = path.join(directionFolder, batchFolder, `${batchFolder}.jsonl`);
+      if (fs.existsSync(jsonlFile)) {
+        const lines = fs.readFileSync(jsonlFile, 'utf-8').split('\n').filter(l => l.trim());
+        for (const line of lines) {
+          try {
+            const record: RunRecord = JSON.parse(line);
+            if (record.success && record.timestamps.t1_submit && record.timestamps.t3_finalized) {
+              allLatencies.push(record.timestamps.t3_finalized - record.timestamps.t1_submit);
+              
+              if (record.costs.totalCost) allCosts.push(record.costs.totalCost);
+              if (record.costs.bridgeFee) allBridgeCosts.push(record.costs.bridgeFee);
+              if (record.costs.sourceFee) allSourceFees.push(record.costs.sourceFee);
+              if (record.costs.targetFee) allTargetFees.push(record.costs.targetFee);
+            }
+          } catch (err) {
+            // Skip malformed lines
+          }
+        }
+      }
+    }
+  }
+
+  // Calculate aggregate statistics
+  allLatencies.sort((a, b) => a - b);
+  
+  const mean = (arr: number[]) => arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null;
+  const stddev = (arr: number[]) => {
+    if (!arr.length) return null;
+    const m = mean(arr)!;
+    const v = arr.reduce((s, x) => s + (x - m) ** 2, 0) / arr.length;
+    return Math.sqrt(v);
+  };
+  const percentile = (sorted: number[], p: number) => {
+    if (!sorted.length) return null;
+    const idx = (sorted.length - 1) * p;
+    const lo = Math.floor(idx);
+    const hi = Math.ceil(idx);
+    const w = idx - lo;
+    return (1 - w) * sorted[lo] + w * sorted[hi];
+  };
+
+  const aggregatedSummary: MetricsSummary = {
+    timestampIso: new Date().toISOString(),
+    tag: `${direction}_aggregated`,
+    direction,
+    xrpAmount: allSummaries[0]?.xrpAmount || 0, // Use first batch's amount
+    runsPlanned: allSummaries.reduce((sum, s) => sum + s.runsPlanned, 0),
+    
+    totalRuns,
+    successCount,
+    failureCount,
+    successRate,
+
+    latency: {
+      n: allLatencies.length,
+      minMs: allLatencies.length ? allLatencies[0] : null,
+      p50Ms: percentile(allLatencies, 0.50),
+      p90Ms: percentile(allLatencies, 0.90),
+      p95Ms: percentile(allLatencies, 0.95),
+      p99Ms: percentile(allLatencies, 0.99),
+      maxMs: allLatencies.length ? allLatencies[allLatencies.length - 1] : null,
+      meanMs: mean(allLatencies),
+      stdDevMs: stddev(allLatencies),
+    },
+
+    costs: {
+      n: allCosts.length,
+      meanTotalXrp: mean(allCosts),
+      minTotalXrp: allCosts.length ? Math.min(...allCosts) : null,
+      maxTotalXrp: allCosts.length ? Math.max(...allCosts) : null,
+      stdDevTotalXrp: stddev(allCosts),
+      meanBridgeXrp: mean(allBridgeCosts),
+      meanSourceFeeXrp: mean(allSourceFees),
+      meanTargetFeeXrp: mean(allTargetFees),
+    },
+
+    batchDurationMs: allSummaries.reduce((sum, s) => sum + (s.batchDurationMs || 0), 0),
+  };
+
+  return aggregatedSummary;
+}
+
+/**
  * Persist everything for a batch in one call.
  * - Raw records → JSONL
  * - Metrics report → JSON
  * - Metrics summary → CSV (single row)
+ * - Append to direction-specific summary CSV
  * - Append to rolling all_metrics.csv
  */
 export function saveBatchArtifacts(
@@ -173,15 +313,32 @@ export function saveBatchArtifacts(
   records: RunRecord[],
   report: MetricsReport
 ): SavePaths {
-  const paths = makePaths(batchId);
+  const paths = makePaths(batchId, cfg.direction);
 
+  // Save batch-specific files
   for (const r of records) appendJsonl(paths.jsonl, r);
-
   writeJsonAtomic(paths.metricsJson, report);
 
   const row = summaryToCsvRow(report.summary, cfg);
   writeCsv(paths.metricsCsv, [row]);
+  
+  // Append to direction-specific summary
+  appendCsvRow(paths.directionSummaryCsv, SUMMARY_CSV_HEADERS, row);
+  
+  // Append to global summary
   appendCsvRow(paths.allCsv, SUMMARY_CSV_HEADERS, row);
+
+  // Compute and save updated direction summary
+  const directionSummary = computeDirectionSummary(cfg.direction);
+  if (directionSummary) {
+    const directionSummaryFile = path.join("data", "results", cfg.direction, `${cfg.direction}_aggregated_metrics.json`);
+    writeJsonAtomic(directionSummaryFile, {
+      summary: directionSummary,
+      batchCount: fs.readdirSync(path.join("data", "results", cfg.direction), { withFileTypes: true })
+        .filter(d => d.isDirectory()).length,
+      lastUpdated: new Date().toISOString(),
+    });
+  }
 
   return paths;
 }

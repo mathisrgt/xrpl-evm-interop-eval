@@ -28,10 +28,20 @@ This repository provides a framework for evaluating **asset bridge performance**
   - Median, mean, minimum, maximum  
   - Standard deviation
 
-Read more of the metrics here: [ARTIFACT.md](./ARTIFACT.md)
+- **Direction-based organization**  
+  Results are organized by bridge direction (`xrpl_to_evm`, `evm_to_xrpl`), enabling easy comparison and trend analysis.
+
+- **Aggregated statistics**  
+  Automatic aggregation of metrics across multiple batches per direction, providing:
+  - Combined latency distributions across all runs
+  - Cumulative success/failure rates
+  - Average costs over time
+  - Chronological tracking via direction-specific summary files
+
+Read more about metrics and data structure in [ARTIFACT.md](./ARTIFACT.md).
 
 - **Result artifacts**  
-  All runs are saved as JSONL and CSV files in `/data/results/`, enabling direct reuse in analysis or integration with academic papers.
+  All runs are saved as JSONL and CSV files in `/data/results/`, organized by direction and batch, enabling direct reuse in analysis or integration with academic papers.
 
 - **TypeScript codebase**  
   Implemented in **TypeScript**, with strongly typed adapters and utilities for consistency and maintainability.
@@ -43,14 +53,43 @@ Read more of the metrics here: [ARTIFACT.md](./ARTIFACT.md)
   Structured for reproducibility and comparability, supporting both case studies and large-scale experimental campaigns.
 
 ## 📂 Repository Structure
-- **`data/results/`** – Artifacts of performed bridge runs (JSON/CSV) used in the paper  
+- **`data/results/`** – Organized by direction, contains artifacts of performed bridge runs (JSON/CSV)
+  - **`xrpl_to_evm/`** – All batches and aggregated metrics for XRPL → EVM direction
+  - **`evm_to_xrpl/`** – All batches and aggregated metrics for EVM → XRPL direction
+  - **`all_metrics.csv`** – Global summary across all directions
 - **`adapters/`** – Chain-specific implementations of bridge steps (XRPL, EVM)  
 - **`runners/`** – Batch execution logic (config, context, orchestration)  
 - **`utils/`** – Shared utilities for logging, metrics, environment handling, file I/O  
 - **`index.ts`** – Entry point that coordinates the top-level logic  
 - **`types.ts`** – Shared TypeScript types and interfaces
 
-## 🔄 Experiment Steps
+## 📊 Data Organization
+
+### Per-batch files
+Each batch creates its own folder with three files:
+```
+data/results/{direction}/{batchId}/
+├── {batchId}.jsonl          # Raw run records
+├── {batchId}_metrics.json   # Detailed metrics report
+└── {batchId}_metrics.csv    # Single-row summary
+```
+
+### Direction-level files
+Each direction maintains aggregated files:
+```
+data/results/{direction}/
+├── {direction}_summary.csv              # All batches chronologically
+└── {direction}_aggregated_metrics.json  # Combined statistics
+```
+
+### Global file
+```
+data/results/all_metrics.csv  # All batches, all directions
+```
+
+For detailed information about metrics and file formats, see [ARTIFACT.md](./ARTIFACT.md).
+
+## 📄 Experiment Steps
 Each run follows the same bridging flow:
 
 1. **Prepare** – Initialize wallet and client  
@@ -105,8 +144,36 @@ Each run follows the same bridging flow:
 
 8. **Execute experiments**
    - The program will run the selected tests.
-   - Results (JSON and CSV) are saved under `data/results/`.
+   - Results are automatically saved under `data/results/{direction}/{batchId}/`.
 
+9. **View aggregated results**
+   - Check `data/results/{direction}/{direction}_aggregated_metrics.json` for combined statistics across all batches in that direction.
+   - Open `data/results/{direction}/{direction}_summary.csv` to see chronological batch metrics.
+
+## 📈 Analyzing Results
+
+### Single batch analysis
+```bash
+cat data/results/xrpl_to_evm/{batchId}/{batchId}_metrics.json
+```
+
+### Direction comparison
+Compare aggregated metrics between directions:
+```bash
+cat data/results/xrpl_to_evm/xrpl_to_evm_aggregated_metrics.json
+cat data/results/evm_to_xrpl/evm_to_xrpl_aggregated_metrics.json
+```
+
+### Trend analysis
+Import direction summary CSV into your analysis tool:
+```bash
+data/results/xrpl_to_evm/xrpl_to_evm_summary.csv
+```
+
+### Global overview
+```bash
+cat data/results/all_metrics.csv
+```
 
 ## 🎥 Demo Video
 A short demonstration of the tool in action is available here:  
@@ -126,4 +193,4 @@ The paper is available at: []()
 ## 🕵️ Reviewers
 
 - 
-- 
+-

@@ -85,16 +85,16 @@ function e2eLatencyMs(r: RunRecord): number | null {
   return Math.max(0, t3 - t1);
 }
 
-/** Best-effort total cost in XRP:
- *  - prefer r.costs.totalXrp if present
- *  - otherwise sum the components that are numbers
- */
+/** Best-effort total cost in XRP - using correct property names */
 function totalCostXrp(r: RunRecord): number | null {
-  const c: any = r.costs ?? {};
-  if (typeof c.totalXrp === "number") return c.totalXrp;
+  const c = r.costs;
+  if (!c) return null;
+  
+  // Use the actual property names from RunCosts
+  if (typeof c.totalCost === "number") return c.totalCost;
 
-  const parts = [c.bridgeFeeXrp, c.sourceFeeXrp, c.targetFeeXrp]
-    .filter((x: any): x is number => typeof x === "number");
+  const parts = [c.bridgeFee, c.sourceFee, c.targetFee]
+    .filter((x): x is number => typeof x === "number");
 
   return parts.length ? parts.reduce((s: number, x: number) => s + x, 0) : null;
 }
@@ -127,20 +127,22 @@ export function computeMetrics(cfg: RunConfig, records: RunRecord[], batchDurati
     stdDevMs: stddev(latencies),
   };
 
+  // Extract costs using correct property names
   const totals = successes
     .map(totalCostXrp)
     .filter((x): x is number => typeof x === "number");
   const totalsSorted = [...totals].sort(byNumberAsc);
 
+  // Use actual property names from RunCosts interface
   const bridgeArr = successes
-    .map((r: any) => r.costs?.bridgeFeeXrp)
-    .filter((x: any): x is number => typeof x === "number");
+    .map(r => r.costs?.bridgeFee)
+    .filter((x): x is number => typeof x === "number");
   const sourceArr = successes
-    .map((r: any) => r.costs?.sourceFeeXrp)
-    .filter((x: any): x is number => typeof x === "number");
+    .map(r => r.costs?.sourceFee)
+    .filter((x): x is number => typeof x === "number");
   const targetArr = successes
-    .map((r: any) => r.costs?.targetFeeXrp)
-    .filter((x: any): x is number => typeof x === "number");
+    .map(r => r.costs?.targetFee)
+    .filter((x): x is number => typeof x === "number");
 
   const costStats: CostsStats = {
     n: totals.length,
