@@ -189,8 +189,3 @@ The paper is available at: []()
 - Parisa **GHODOUS**  
 - Jean-Patrick **GELAS**  
 - Nicolas **FIGAY**
-
-## 🕵️ Reviewers
-
-- 
--
