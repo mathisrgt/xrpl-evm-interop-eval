@@ -1,0 +1,54 @@
+{
+  "summary": {
+    "timestampIso": "2025-10-06T15:43:35.640Z",
+    "tag": "mainnet_evm_to_xrpl_1759765004371",
+    "direction": "evm_to_xrpl",
+    "xrpAmount": 3,
+    "runsPlanned": 5,
+    "totalRuns": 5,
+    "successCount": 3,
+    "failureCount": 2,
+    "successRate": 0.6,
+    "latency": {
+      "n": 3,
+      "minMs": 126629,
+      "p50Ms": 130827,
+      "p90Ms": 131985.4,
+      "p95Ms": 132130.2,
+      "p99Ms": 132246.04,
+      "maxMs": 132275,
+      "meanMs": 129910.33333333333,
+      "stdDevMs": 2394.373590083404
+    },
+    "costs": {
+      "n": 3,
+      "meanTotalXrp": 3.0619828000000004,
+      "minTotalXrp": 3.0619828,
+      "maxTotalXrp": 3.0619828,
+      "stdDevTotalXrp": 4.440892098500626e-16,
+      "meanBridgeXrp": 0,
+      "meanSourceFeeXrp": 0.0619828,
+      "meanTargetFeeXrp": 0.165
+    },
+    "batchDurationMs": 406986
+  },
+  "latenciesMs": [
+    132275,
+    126629,
+    130827
+  ],
+  "failureReasons": {
+    "The contract function \"interchainTransfer\" reverted with the following signature:\n0xfe6440f6\n\nUnable to decode signature \"0xfe6440f6\" as it was not found on the provided ABI.\nMake sure you are using the correct ABI and that the error exists on it.\nYou can look up the decoded signature here: https://openchain.xyz/signatures?query=0xfe6440f6.\n \nContract Call:\n  address:   0xB5FB4BE02232B1bBA4dC8f81dc24C26980dE9e3C\n  function:  interchainTransfer(bytes32 tokenId, string destinationChain, bytes destinationAddress, uint256 amount, bytes metadata, uint256 gasValue)\n  args:                        (0xba5a21ca88ef6bba2bfff5088994f90e1077e2a1cc3dcc38bd261f00fce2824f, xrpl, 0x726862536b7972514552314a734c42314e566b795166365271727877376b794b6463, 3000000000000000000, 0x, 500000000000000000)\n  sender:    0x1BfB0aeDFE575551BF95ed10b52DCCB0bb5313DB\n\nDocs: https://viem.sh/docs/contract/decodeErrorResult\nVersion: viem@2.37.8": 2
+  },
+  "cfgEcho": {
+    "tag": "mainnet_evm_to_xrpl_1759765004371",
+    "mode": "mainnet",
+    "direction": "evm_to_xrpl",
+    "xrpAmount": 3,
+    "runs": 5,
+    "xrplUrl": "wss://xrplcluster.com/",
+    "evmUrl": "https://rpc.xrplevm.org",
+    "xrplAddress": "rhbSkyrQER1JsLB1NVkyQf6Rqrxw7kyKdc",
+    "evmAddress": "0x1BfB0aeDFE575551BF95ed10b52DCCB0bb5313DB"
+  }
+}
