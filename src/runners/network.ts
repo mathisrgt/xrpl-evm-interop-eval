@@ -1,6 +1,5 @@
-import { EVM_WALLET_PRIVATE_KEY, XRPL_WALLET_SEED } from "../utils/environment";
 import { NetworkConfig, NetworkMode } from "../types";
-import { Address } from "viem";
+import { EVM_WALLET_PRIVATE_KEY, XRPL_WALLET_SEED } from "../utils/environment";
 
 export const NETWORK_CONFIG: Record<NetworkMode, NetworkConfig> = {
   mainnet: {

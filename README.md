@@ -176,8 +176,7 @@ cat data/results/all_metrics.csv
 ```
 
 ## 🎥 Demo Video
-A short demonstration of the tool in action is available here:  
-[]()
+A short demonstration of the tool in action is available [here](https://youtu.be/8jwsN8dDhSY).
 
 ## 📄 Related Paper
 This repository is part of a broader academic study on blockchain interoperability and bridge performance.  
@@ -189,3 +188,9 @@ The paper is available at: []()
 - Parisa **GHODOUS**  
 - Jean-Patrick **GELAS**  
 - Nicolas **FIGAY**
+
+## 🕵️ Reviewers
+
+- Odelia **TORTEMAN**
+- Thomas **HUSSENET**
+- ...

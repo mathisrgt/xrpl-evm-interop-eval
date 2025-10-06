@@ -352,7 +352,7 @@ async function confirmConfiguration(rl: readline.Interface, config: RunConfig): 
     if (networks.mode === 'mainnet') {
         console.log(chalk.red('\n⚠️  WARNING: This will use real XRP on mainnet!'));
         console.log(chalk.red('💸 Estimated cost: ~' + (xrpAmount * runs).toFixed(2) + ' XRP'));
-        console.log(chalk.red('💸 Estimated bridge fees: ~' + (0.5 * runs).toFixed(2) + ' USD'));
+        console.log(chalk.red('💸 Estimated bridge fees: ~' + (0.2 * runs).toFixed(2) + ' USD'));
     }
 
     const answer = await askQuestion(rl, '\nProceed with this configuration? (Y/n): ');

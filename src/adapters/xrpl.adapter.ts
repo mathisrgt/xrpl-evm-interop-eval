@@ -61,6 +61,15 @@ export const xrplAdapter: ChainAdapter = {
             throw new Error(`XRPL submit failed: ${code}`);
         }
 
+        const engineResult = (res.result as any).engine_result || (res.result as any).meta?.TransactionResult;
+        if (engineResult !== "tesSUCCESS") {
+            console.error(chalk.red(`Transaction validated but failed with code: ${engineResult}`));
+            console.error(chalk.dim(`TX Hash: ${res.result.hash}`));
+            console.error(chalk.dim(`Fee charged: ${dropsToXrp(res.result.tx_json.Fee || "0")} XRP`));
+
+            throw new Error(`XRPL transaction failed: ${engineResult}`);
+        }
+
         const txHash = res.result.hash!;
 
         const txFee = Number(dropsToXrp(res.result.tx_json.Fee || "0"));

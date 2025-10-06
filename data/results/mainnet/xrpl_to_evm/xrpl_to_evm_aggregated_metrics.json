@@ -1,0 +1,37 @@
+{
+  "summary": {
+    "timestampIso": "2025-10-06T13:32:40.126Z",
+    "tag": "mainnet_xrpl_to_evm_aggregated",
+    "direction": "xrpl_to_evm",
+    "xrpAmount": 4,
+    "runsPlanned": 1,
+    "totalRuns": 1,
+    "successCount": 1,
+    "failureCount": 0,
+    "successRate": 1,
+    "latency": {
+      "n": 0,
+      "minMs": null,
+      "p50Ms": null,
+      "p90Ms": null,
+      "p95Ms": null,
+      "p99Ms": null,
+      "maxMs": null,
+      "meanMs": null,
+      "stdDevMs": null
+    },
+    "costs": {
+      "n": 0,
+      "meanTotalXrp": null,
+      "minTotalXrp": null,
+      "maxTotalXrp": null,
+      "stdDevTotalXrp": null,
+      "meanBridgeXrp": null,
+      "meanSourceFeeXrp": null,
+      "meanTargetFeeXrp": null
+    },
+    "batchDurationMs": 169892
+  },
+  "batchCount": 1,
+  "lastUpdated": "2025-10-06T13:32:40.126Z"
+}

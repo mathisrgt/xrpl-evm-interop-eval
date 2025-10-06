@@ -60,11 +60,15 @@ async function main() {
                 updateTimestamp(runCtx, 't3_finalized', trgOutput.finalizedAt);
                 logObserve(runCtx, trgOutput);
 
-                logStep(`gas refund`);
-                await waitWithCountdown(10000, "Waiting for gas refund transaction...");
-                const gasRfdOutput = await runner.observeGasRefund(runCtx);
-                updateTimestamp(runCtx, 't4_finalized_gas_refund', srcOutput.submittedAt);
-                console.log(`⛽ Gas refund received: ${gasRfdOutput.xrpAmount} XRP (${gasRfdOutput.txHash})`);
+                let gasRfdOutput;
+                
+                if (cfg.networks.mode === "testnet") {
+                    logStep(`gas refund`);
+                    await waitWithCountdown(10000, "Waiting for gas refund transaction...");
+                    gasRfdOutput = await runner.observeGasRefund(runCtx);
+                    updateTimestamp(runCtx, 't4_finalized_gas_refund', srcOutput.submittedAt);
+                    console.log(`⛽ Gas refund received: ${gasRfdOutput.xrpAmount} XRP (${gasRfdOutput.txHash})`);
+                }
 
                 logStep("record")
                 const record = createRunRecord(runCtx, srcOutput, trgOutput, true, gasRfdOutput);
