@@ -1,8 +1,17 @@
-import { createPublicClient, createWalletClient, formatEther, http } from "viem";
+import { createPublicClient, createWalletClient, encodeFunctionData, erc20Abi, formatEther, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { xrplevmTestnet } from "viem/chains";
 import { ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../types";
 import { xrplevm } from "../utils/chains";
+import {
+    EVM_GATEWAY_ABI,
+    GAS_SERVICE_ADDRESS,
+    INTERCHAIN_GAS_AMOUNT,
+    INTERCHAIN_TOKEN_SERVICE_ABI,
+    INTERCHAIN_TOKEN_SERVICE_ADDRESS,
+    NATIVE_TOKEN_ADDRESS,
+    XRP_TOKEN_ID
+} from "../utils/constants";
 import { EVM_WALLET_PRIVATE_KEY } from "../utils/environment";
 
 export const evmAdapter: ChainAdapter = {
@@ -38,55 +47,80 @@ export const evmAdapter: ChainAdapter = {
 
         const submittedAt = Date.now();
 
-        const txHash = await walletClient.writeContract({
-            account,
-            address: `0x${ctx.cfg.networks.evm.gateway}`,
-            abi: [{
-                "inputs": [
-                    {
-                        "internalType": "bytes32",
-                        "name": "tokenId",
-                        "type": "bytes32"
-                    },
-                    {
-                        "internalType": "string",
-                        "name": "destinationChain",
-                        "type": "string"
-                    },
-                    {
-                        "internalType": "bytes",
-                        "name": "destinationAddress",
-                        "type": "bytes"
-                    },
-                    {
-                        "internalType": "uint256",
-                        "name": "amount",
-                        "type": "uint256"
-                    },
-                    {
-                        "internalType": "bytes",
-                        "name": "metadata",
-                        "type": "bytes"
-                    },
-                    {
-                        "internalType": "uint256",
-                        "name": "gasValue",
-                        "type": "uint256"
-                    }
-                ],
-                "name": "interchainTransfer",
-                "outputs": [],
-                "stateMutability": "payable",
-                "type": "function"
-            }],
+        // Encode the destination XRPL address as hex bytes
+        const destinationAddressHex = `0x${Buffer.from(xrplWallet.address).toString("hex")}` as `0x${string}`;
+
+        // Encode the approval for Interchain Token Service
+        const approveTokenServiceCalldata = encodeFunctionData({
+            abi: erc20Abi,
+            functionName: "approve",
+            args: [
+                INTERCHAIN_TOKEN_SERVICE_ADDRESS,  // spender: address
+                amountInWei                         // amount: uint256
+            ]
+        });
+
+        // Encode the approval for Gas Service
+        const approveGasServiceCalldata = encodeFunctionData({
+            abi: erc20Abi,
+            functionName: "approve",
+            args: [
+                GAS_SERVICE_ADDRESS,    // spender: address
+                amountInWei             // amount: uint256
+            ]
+        });
+
+        // Encode the interchainTransfer function call
+        const interchainTransferCalldata = encodeFunctionData({
+            abi: INTERCHAIN_TOKEN_SERVICE_ABI,
             functionName: "interchainTransfer",
             args: [
-                "0xba5a21ca88ef6bba2bfff5088994f90e1077e2a1cc3dcc38bd261f00fce2824f",
-                "xrpl",
-                `0x${Buffer.from(xrplWallet.address).toString("hex")}`,
-                amountInWei,
-                "0x",
-                500000000000000000n,
+                XRP_TOKEN_ID,              // tokenId: bytes32
+                "xrpl",                     // destinationChain: string
+                destinationAddressHex,      // destinationAddress: bytes
+                amountInWei,                // amount: uint256
+                "0x",                       // metadata: bytes (empty)
+                INTERCHAIN_GAS_AMOUNT       // gasValue: uint256
+            ]
+        });
+
+        // Construct the multicall array with approvals + interchain transfer
+        const multicallData = [
+            // 1. Approval for Interchain Token Service
+            {
+                callType: 1,                            // CallType: 1 (Call with token interaction)
+                target: NATIVE_TOKEN_ADDRESS,           // Target: Native XRP token
+                value: 0n,                              // Value: 0 (no ETH sent for approval)
+                callData: approveTokenServiceCalldata,  // Calldata: approve() function call
+                payload: `0x000000000000000000000000${NATIVE_TOKEN_ADDRESS.slice(2).toLowerCase()}0000000000000000000000000000000000000000000000000000000000000001`  // Metadata: token address (bytes32) + operation type 1 (bytes32)
+            },
+            // 2. Approval for Gas Service
+            {
+                callType: 1,                            // CallType: 1 (Call with token interaction)
+                target: NATIVE_TOKEN_ADDRESS,           // Target: Native XRP token
+                value: 0n,                              // Value: 0 (no ETH sent for approval)
+                callData: approveGasServiceCalldata,    // Calldata: approve() function call
+                payload: `0x000000000000000000000000${NATIVE_TOKEN_ADDRESS.slice(2).toLowerCase()}0000000000000000000000000000000000000000000000000000000000000001`  // Metadata: token address (bytes32) + operation type 1 (bytes32)
+            },
+            // 3. Interchain transfer of XRP to XRPL address
+            {
+                callType: 0,                            // CallType: 0 (Default call)
+                target: INTERCHAIN_TOKEN_SERVICE_ADDRESS,  // Target: Interchain Token Service contract
+                value: INTERCHAIN_GAS_AMOUNT,           // Value: gas payment amount (not full transfer amount!)
+                callData: interchainTransferCalldata,   // Calldata: encoded interchainTransfer function call
+                payload: `0x000000000000000000000000${NATIVE_TOKEN_ADDRESS.slice(2).toLowerCase()}0000000000000000000000000000000000000000000000000000000000000003`  // Metadata: token address (bytes32) + operation type 3 (bytes32)
+            }
+        ];
+
+        const txHash = await walletClient.writeContract({
+            account,
+            address: `0x${ctx.cfg.networks.evm.relayer}`,
+            abi: EVM_GATEWAY_ABI,
+            functionName: "fundAndRunMulticall",
+            args: [
+                NATIVE_TOKEN_ADDRESS,       // token: address (native XRP)
+                amountInWei,                // amount: uint256 (total XRP amount to transfer)
+                multicallData               // calls: tuple[] (array of multicall operations)
             ],
             value: 0n,
             chain: ctx.cache.evm?.chain
@@ -179,7 +213,7 @@ export const evmAdapter: ChainAdapter = {
                     }
                 },
             });
-            
+
             ctx.cleaner.trackViemUnwatch(unwatch);
         });
     },

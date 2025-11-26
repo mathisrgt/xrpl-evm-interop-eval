@@ -70,11 +70,11 @@ async function main() {
                     console.log(`⛽ Gas refund received: ${gasRfdOutput.xrpAmount} XRP (${gasRfdOutput.txHash})`);
                 }
 
-                logStep("record")
-                const record = createRunRecord(runCtx, srcOutput, trgOutput, true, gasRfdOutput);
-                logRecord(record);
+                // logStep("record")
+                // const record = createRunRecord(runCtx, srcOutput, trgOutput, true, gasRfdOutput);
+                // logRecord(record);
 
-                records.push(record);
+                // records.push(record);
                 successCount++;
 
                 console.log(chalk.green(`✅ Run ${runNumber}/${cfg.runs} completed successfully`));
@@ -89,29 +89,29 @@ async function main() {
 
                 logError(`Run ${runNumber} failed`, "RUN_ERROR", err instanceof Error ? err : undefined);
 
-                const failedRecord = createRunRecord(
-                    runCtx,
-                    { xrpAmount: 0, txHash: runCtx.txs.sourceTxHash || "N/A", submittedAt: ctx.ts.t1_submit || 0, txFee: 0 },
-                    { xrpAmount: 0, txHash: runCtx.txs.targetTxHash || "N/A", finalizedAt: ctx.ts.t3_finalized || 0, txFee: 0 },
-                    false
-                );
-                failedRecord.abort_reason = errorMessage;
+                // const failedRecord = createRunRecord(
+                //     runCtx,
+                //     { xrpAmount: 0, txHash: runCtx.txs.sourceTxHash || "N/A", submittedAt: ctx.ts.t1_submit || 0, txFee: 0 },
+                //     { xrpAmount: 0, txHash: runCtx.txs.targetTxHash || "N/A", finalizedAt: ctx.ts.t3_finalized || 0, txFee: 0 },
+                //     false
+                // );
+                // failedRecord.abort_reason = errorMessage;
 
-                records.push(failedRecord);
+                // records.push(failedRecord);
 
                 console.log(chalk.red(`❌ Run ${runNumber}/${cfg.runs} failed: ${errorMessage}`));
             }
         }
 
-        if (records.length > 0) {
-            logStep("Metrics");
-            const metricsReport = computeMetrics(cfg, records, (Date.now() - batchStartTime));
-            displayMetrics(metricsReport.summary);
+        // if (records.length > 0) {
+        //     logStep("Metrics");
+        //     const metricsReport = computeMetrics(cfg, records, (Date.now() - batchStartTime));
+        //     displayMetrics(metricsReport.summary);
 
-            console.log(chalk.bold('\n💾 Saving batch records...'));
-            saveBatchArtifacts(batchId, cfg, ctx, records, metricsReport);
-            console.log(chalk.green(`✅ Batch saved: ${batchId}`));
-        }
+        //     console.log(chalk.bold('\n💾 Saving batch records...'));
+        //     saveBatchArtifacts(batchId, cfg, ctx, records, metricsReport);
+        //     console.log(chalk.green(`✅ Batch saved: ${batchId}`));
+        // }
     } catch (err) {
         logError("Fatal error during batch execution", "BATCH_ERROR", err instanceof Error ? err : undefined);
         console.error(err);
