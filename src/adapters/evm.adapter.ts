@@ -1,4 +1,4 @@
-import { createPublicClient, createWalletClient, encodeFunctionData, erc20Abi, formatEther, http } from "viem";
+import { createPublicClient, createWalletClient, encodeFunctionData, erc20Abi, formatEther, http, parseEther } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { xrplevmTestnet } from "viem/chains";
 import { ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../types";
@@ -43,7 +43,7 @@ export const evmAdapter: ChainAdapter = {
 
         if (!xrplWallet || !walletClient || !account || !publicClient) throw new Error("EVM not prepared");
 
-        const amountInWei = BigInt(Math.floor(ctx.cfg.xrpAmount * 1e18));
+        const amountInWei = parseEther(ctx.cfg.xrpAmount.toString());
 
         const submittedAt = Date.now();
 
