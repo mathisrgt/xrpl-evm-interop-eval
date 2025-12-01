@@ -1,10 +1,26 @@
 import { Client, Payment, Wallet, convertStringToHex, dropsToXrp, xrpToDrops } from "xrpl";
 import type { ChainAdapter, RunContext, SourceOutput, TargetOutput, GasRefundOutput } from "../../types";
 import chalk from "chalk";
+import axios from "axios";
+import { SQUID_INTEGRATOR_ID } from "../../utils/environment";
+
+// Helper to get token address format
+function getTokenAddress(chainId: string, tokenAddress: string): string {
+    if (chainId === 'xrpl-mainnet') {
+        if (tokenAddress.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee') {
+            return 'xrp';
+        }
+    }
+    return tokenAddress;
+}
+
+async function delay(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 export const xrplAdapter: ChainAdapter = {
 
-    /** Prepare the client and wallet */
+    /** Prepare the client, wallet, and Squid route */
     async prepare(ctx: RunContext) {
         const client = new Client(ctx.cfg.networks.xrpl.wsUrl);
         await client.connect();
@@ -12,49 +28,94 @@ export const xrplAdapter: ChainAdapter = {
         const wallet = Wallet.fromSeed(ctx.cfg.networks.xrpl.walletSeed);
         ctx.cache.xrpl = { client, wallet };
         ctx.cleaner.trackXrpl(client, wallet.address);
-    },
 
-    /** Submit XRPL Payment with optional memos */
-    async submit(ctx: RunContext): Promise<SourceOutput> {
-        const { client, wallet } = ctx.cache.xrpl!;
+        // Get EVM account for toAddress
         const { account } = ctx.cache.evm!;
-        if (!client || !wallet) throw new Error("XRPL not prepared");
+        if (!account) throw new Error("EVM not prepared - run EVM prepare first");
 
-        const tx: Payment = {
-            TransactionType: "Payment",
-            Account: wallet.address,
-            Destination: ctx.cfg.networks.xrpl.gateway,
-            Amount: xrpToDrops(ctx.cfg.xrpAmount),
-            Memos: [
-                {
-                    Memo: {
-                        MemoType: convertStringToHex("type"),
-                        MemoData: convertStringToHex("interchain_transfer")
-                    }
-                },
-                {
-                    Memo: {
-                        MemoType: convertStringToHex("destination_address"),
-                        MemoData: convertStringToHex(account.address.slice(2))
-                    }
-                },
-                {
-                    Memo: {
-                        MemoType: convertStringToHex("destination_chain"),
-                        MemoData: convertStringToHex("xrpl-evm")
-                    }
-                },
-                {
-                    Memo: {
-                        MemoType: convertStringToHex("gas_fee_amount"),
-                        MemoData: convertStringToHex(ctx.cfg.networks.xrpl.gas_fee)
-                    }
-                }
-            ]
+        // Prepare Squid route parameters
+        const fromChainId = 'xrpl-mainnet';
+        const toChainId = '1440000'; // XRPL-EVM
+        const fromToken = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+        const toToken = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+        const fromAmount = xrpToDrops(ctx.cfg.xrpAmount); // Convert XRP to drops
+
+        const formattedFromToken = getTokenAddress(fromChainId, fromToken);
+        const formattedToToken = getTokenAddress(toChainId, toToken);
+
+        const params = {
+            fromAddress: wallet.address,
+            fromChain: fromChainId,
+            fromToken: formattedFromToken,
+            fromAmount,
+            toChain: toChainId,
+            toToken: formattedToToken,
+            toAddress: account.address,
+            quoteOnly: false
         };
 
+        console.log(chalk.cyan('🔍 Getting Squid route...'));
+
+        let retries = 3;
+        while (retries > 0) {
+            try {
+                const result = await axios.post(
+                    "https://v2.api.squidrouter.com/v2/route",
+                    params,
+                    {
+                        headers: {
+                            "x-integrator-id": SQUID_INTEGRATOR_ID,
+                            "Content-Type": "application/json",
+                        },
+                    }
+                );
+
+                const requestId = result.headers["x-request-id"];
+                ctx.cache.squid = {
+                    route: result.data.route,
+                    requestId
+                };
+
+                console.log(chalk.green('✓ Squid route obtained'));
+                return;
+            } catch (error: any) {
+                if (error.response?.status === 429 && retries > 1) {
+                    console.log(chalk.yellow(`Rate limited, waiting 3s... (${retries - 1} retries left)`));
+                    await delay(3000);
+                    retries--;
+                } else {
+                    if (error.response) {
+                        console.error(chalk.red("Squid API error:"), error.response.data);
+                    }
+                    throw error;
+                }
+            }
+        }
+
+        throw new Error('Failed to get Squid route after retries');
+    },
+
+    /** Submit XRPL Payment using Squid route */
+    async submit(ctx: RunContext): Promise<SourceOutput> {
+        const { client, wallet } = ctx.cache.xrpl!;
+        const { route } = ctx.cache.squid!;
+
+        if (!client || !wallet) throw new Error("XRPL not prepared");
+        if (!route) throw new Error("Squid route not prepared");
+
+        // Get the payment transaction from Squid route
+        const payment = route.transactionRequest.data;
+
+        console.log(chalk.cyan('📤 Submitting XRPL transaction...'));
+        console.log(chalk.dim(`Destination: ${payment.Destination}`));
+        console.log(chalk.dim(`Amount: ${dropsToXrp(payment.Amount)} XRP`));
+
         const submittedAt = Date.now();
-        const res = await client.submitAndWait(tx, { autofill: true, wallet });
+
+        // Sign and submit the transaction
+        const prepared = await client.autofill(payment);
+        const signed = wallet.sign(prepared);
+        const res = await client.submitAndWait(signed.tx_blob);
 
         if (!res.result.validated) {
             const code = (res.result as any).engine_result || "unknown";
@@ -71,8 +132,11 @@ export const xrplAdapter: ChainAdapter = {
         }
 
         const txHash = res.result.hash!;
-
         const txFee = Number(dropsToXrp(res.result.tx_json.Fee || "0"));
+
+        console.log(chalk.green(`✓ XRPL transaction submitted`));
+        console.log(chalk.dim(`TX Hash: ${txHash}`));
+        console.log(chalk.dim(`Explorer: https://livenet.xrpl.org/transactions/${txHash}`));
 
         return { xrpAmount: ctx.cfg.xrpAmount, txHash, submittedAt, txFee };
     },

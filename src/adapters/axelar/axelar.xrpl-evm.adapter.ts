@@ -1,4 +1,4 @@
-import { createPublicClient, createWalletClient, encodeFunctionData, erc20Abi, formatEther, http, parseEther } from "viem";
+import { Address, createPublicClient, createWalletClient, encodeFunctionData, erc20Abi, formatEther, http, parseEther, parseUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { xrplevmTestnet } from "viem/chains";
 import { ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../../types";
@@ -12,8 +12,24 @@ import {
     NATIVE_TOKEN_ADDRESS,
     XRP_TOKEN_ID
 } from "../../utils/constants";
-import { EVM_WALLET_PRIVATE_KEY } from "../../utils/environment";
+import { EVM_WALLET_PRIVATE_KEY, SQUID_INTEGRATOR_ID } from "../../utils/environment";
 import { waitWithCountdown } from "../../utils/time";
+import axios from "axios";
+import chalk from "chalk";
+
+// Helper to get token address format
+function getTokenAddress(chainId: string, tokenAddress: string): string {
+    if (chainId === 'xrpl-mainnet') {
+        if (tokenAddress.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee') {
+            return 'xrp';
+        }
+    }
+    return tokenAddress;
+}
+
+async function delay(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 export const evmAdapter: ChainAdapter = {
 
@@ -35,131 +51,121 @@ export const evmAdapter: ChainAdapter = {
         const account = privateKeyToAccount(`0x${EVM_WALLET_PRIVATE_KEY}`);
 
         ctx.cache.evm = { publicClient, walletClient, account, chain };
+
+        // Get XRPL wallet for toAddress
+        const { wallet } = ctx.cache.xrpl!;
+        if (!wallet) throw new Error("XRPL not prepared - run XRPL prepare first");
+
+        // Prepare Squid route parameters
+        const fromChainId = '1440000'; // XRPL-EVM
+        const toChainId = 'xrpl-mainnet';
+        const fromToken = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+        const toToken = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+        const fromAmount = parseEther(ctx.cfg.xrpAmount.toString()).toString();
+
+        const formattedFromToken = getTokenAddress(fromChainId, fromToken);
+        const formattedToToken = getTokenAddress(toChainId, toToken);
+
+        const params = {
+            fromAddress: account.address,
+            fromChain: fromChainId,
+            fromToken: formattedFromToken,
+            fromAmount,
+            toChain: toChainId,
+            toToken: formattedToToken,
+            toAddress: wallet.address,
+            quoteOnly: false
+        };
+
+        console.log(chalk.cyan('🔍 Getting Squid route...'));
+
+        let retries = 3;
+        while (retries > 0) {
+            try {
+                const result = await axios.post(
+                    "https://v2.api.squidrouter.com/v2/route",
+                    params,
+                    {
+                        headers: {
+                            "x-integrator-id": SQUID_INTEGRATOR_ID,
+                            "Content-Type": "application/json",
+                        },
+                    }
+                );
+
+                const requestId = result.headers["x-request-id"];
+                ctx.cache.squid = {
+                    route: result.data.route,
+                    requestId
+                };
+
+                console.log(chalk.green('✓ Squid route obtained'));
+                return;
+            } catch (error: any) {
+                if (error.response?.status === 429 && retries > 1) {
+                    console.log(chalk.yellow(`Rate limited, waiting 3s... (${retries - 1} retries left)`));
+                    await delay(3000);
+                    retries--;
+                } else {
+                    if (error.response) {
+                        console.error(chalk.red("Squid API error:"), error.response.data);
+                    }
+                    throw error;
+                }
+            }
+        }
+
+        throw new Error('Failed to get Squid route after retries');
     },
 
     async submit(ctx: RunContext): Promise<SourceOutput> {
         const { account, walletClient, publicClient } = ctx.cache.evm!;
-        const { wallet: xrplWallet } = ctx.cache.xrpl!;
+        const { route } = ctx.cache.squid!;
 
+        if (!walletClient || !account || !publicClient) throw new Error("EVM not prepared");
+        if (!route) throw new Error("Squid route not prepared");
 
-        if (!xrplWallet || !walletClient || !account || !publicClient) throw new Error("EVM not prepared");
+        const target = route.transactionRequest.target;
+        const data = route.transactionRequest.data;
+        const value = route.transactionRequest.value;
+        const fromToken = route.params?.fromToken || "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+        const fromAmount = route.params?.fromAmount || value;
 
-        const amountInWei = parseEther(ctx.cfg.xrpAmount.toString());
+        console.log(chalk.cyan('📤 Submitting EVM transaction...'));
+        console.log(chalk.dim(`Target: ${target}`));
+        console.log(chalk.dim(`Value: ${formatEther(BigInt(value || "0"))} XRP`));
 
         const submittedAt = Date.now();
 
-        // Encode the destination XRPL address as hex bytes
-        const destinationAddressHex = `0x${Buffer.from(xrplWallet.address).toString("hex")}` as `0x${string}`;
+        // Approve if not native token
+        if (fromToken !== "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" && fromToken !== "xrp") {
+            console.log(chalk.yellow('Approving token...'));
+            const approveTx = await walletClient.writeContract({
+                address: fromToken as Address,
+                abi: erc20Abi,
+                functionName: 'approve',
+                args: [target as Address, BigInt(fromAmount)],
+                account,
+                chain: ctx.cache.evm?.chain
+            });
+            await publicClient.waitForTransactionReceipt({ hash: approveTx });
+            console.log(chalk.green('✓ Token approved'));
+        }
 
-        // Encode the approval for Interchain Token Service
-        const approveTokenServiceCalldata = encodeFunctionData({
-            abi: erc20Abi,
-            functionName: "approve",
-            args: [
-                INTERCHAIN_TOKEN_SERVICE_ADDRESS,  // spender: address
-                amountInWei                         // amount: uint256
-            ]
-        });
-
-        // Encode the approval for Gas Service
-        const approveGasServiceCalldata = encodeFunctionData({
-            abi: erc20Abi,
-            functionName: "approve",
-            args: [
-                GAS_SERVICE_ADDRESS,    // spender: address
-                amountInWei             // amount: uint256
-            ]
-        });
-
-        // Encode the interchainTransfer function call
-        const interchainTransferCalldata = encodeFunctionData({
-            abi: INTERCHAIN_TOKEN_SERVICE_ABI,
-            functionName: "interchainTransfer",
-            args: [
-                XRP_TOKEN_ID,              // tokenId: bytes32
-                "xrpl",                     // destinationChain: string
-                destinationAddressHex,      // destinationAddress: bytes
-                amountInWei,                // amount: uint256
-                "0x",                       // metadata: bytes (empty)
-                INTERCHAIN_GAS_AMOUNT       // gasValue: uint256
-            ]
-        });
-
-        // Construct the multicall array with approvals + interchain transfer
-        const multicallData = [
-            // 1. Approval for Interchain Token Service
-            {
-                callType: 1,                            // CallType: 1 (Call with token interaction)
-                target: NATIVE_TOKEN_ADDRESS,           // Target: Native XRP token
-                value: 0n,                              // Value: 0 (no ETH sent for approval)
-                callData: approveTokenServiceCalldata,  // Calldata: approve() function call
-                payload: `0x000000000000000000000000${NATIVE_TOKEN_ADDRESS.slice(2).toLowerCase()}0000000000000000000000000000000000000000000000000000000000000001`  // Metadata: token address (bytes32) + operation type 1 (bytes32)
-            },
-            // 2. Approval for Gas Service
-            {
-                callType: 1,                            // CallType: 1 (Call with token interaction)
-                target: NATIVE_TOKEN_ADDRESS,           // Target: Native XRP token
-                value: 0n,                              // Value: 0 (no ETH sent for approval)
-                callData: approveGasServiceCalldata,    // Calldata: approve() function call
-                payload: `0x000000000000000000000000${NATIVE_TOKEN_ADDRESS.slice(2).toLowerCase()}0000000000000000000000000000000000000000000000000000000000000001`  // Metadata: token address (bytes32) + operation type 1 (bytes32)
-            },
-            // 3. Interchain transfer of XRP to XRPL address
-            {
-                callType: 0,                            // CallType: 0 (Default call)
-                target: INTERCHAIN_TOKEN_SERVICE_ADDRESS,  // Target: Interchain Token Service contract
-                value: INTERCHAIN_GAS_AMOUNT,           // Value: gas payment amount (not full transfer amount!)
-                callData: interchainTransferCalldata,   // Calldata: encoded interchainTransfer function call
-                payload: `0x000000000000000000000000${NATIVE_TOKEN_ADDRESS.slice(2).toLowerCase()}0000000000000000000000000000000000000000000000000000000000000003`  // Metadata: token address (bytes32) + operation type 3 (bytes32)
-            }
-        ];
-
-        const txHash = await walletClient.writeContract({
+        // Execute the transaction
+        const txHash = await walletClient.sendTransaction({
             account,
-            address: `0x${ctx.cfg.networks.evm.relayer}`,
-            abi: EVM_GATEWAY_ABI,
-            functionName: "fundAndRunMulticall",
-            // args: [
-            //     NATIVE_TOKEN_ADDRESS,       // token: address (native XRP)
-            //     amountInWei,                // amount: uint256 (total XRP amount to transfer)
-            //     multicallData               // calls: tuple[] (array of multicall operations)
-            // ],
-            args:
-                [
-                    "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
-                    4000000000000000000n,
-                    [
-                        [
-                            "1",
-                            "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
-                            "0",
-                            "0x095ea7b3000000000000000000000000b5fb4be02232b1bba4dc8f81dc24c26980de9e3c0000000000000000000000000000000000000000000000003782dace9d900000",
-                            "0x000000000000000000000000eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee0000000000000000000000000000000000000000000000000000000000000001"
-                        ],
-                        [
-                            "1",
-                            "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
-                            "0",
-                            "0x095ea7b3000000000000000000000000db0a778c57bd31e401d52ba6cf936d06e1324ae80000000000000000000000000000000000000000000000003782dace9d900000",
-                            "0x000000000000000000000000eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee0000000000000000000000000000000000000000000000000000000000000001"
-                        ],
-                        [
-                            "0",
-                            "0xB5FB4BE02232B1bBA4dC8f81dc24C26980dE9e3C",
-                            "172772783898376077",
-                            "0xda081c73ba5a21ca88ef6bba2bfff5088994f90e1077e2a1cc3dcc38bd261f00fce2824f00000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000003782dace9d90000000000000000000000000000000000000000000000000000000000000000001600000000000000000000000000000000000000000000000000265cfee7b1e378d00000000000000000000000000000000000000000000000000000000000000047872706c000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000022726862536b7972514552314a734c42314e566b795166365271727877376b794b64630000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-                            "0x000000000000000000000000eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee0000000000000000000000000000000000000000000000000000000000000003"
-                        ]
-                    ]
-                ],
-            value: 0n,
+            to: target as Address,
+            data: data as Address,
+            value: BigInt(value || "0"),
+            gas: BigInt(route.transactionRequest.gasLimit || "500000"),
             chain: ctx.cache.evm?.chain
         });
 
+        console.log(chalk.green(`✓ EVM transaction submitted`));
+        console.log(chalk.dim(`TX Hash: ${txHash}`));
+
         const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-
-        // TODO: Handle an abort
-
-        const tx = await publicClient.getTransaction({ hash: txHash });
 
         const gasUsed = receipt.gasUsed;
         const effectiveGasPrice = receipt.effectiveGasPrice || 0n;
@@ -170,77 +176,121 @@ export const evmAdapter: ChainAdapter = {
     },
 
     /**
-    * Observe the target-side inbound event by polling Blockscout API on each new block.
-    * Filters for recent transfers *to* our address and *from* the expected gateway.
+    * Observe the target-side inbound event using getLogs to watch for XRP token transfers
+    * Watches for ERC-20 Transfer events instead of native transfers since Squid uses wrapped tokens
     */
     async observe(ctx: RunContext): Promise<TargetOutput> {
         const { publicClient, account } = ctx.cache.evm!;
 
         if (!publicClient || !account) throw new Error("EVM not prepared");
 
-        await waitWithCountdown(60000, "Bridge being performed...");
-
-        const url = `${ctx.cache.evm?.chain.blockExplorers?.default.apiUrl}/addresses/${account.address}/token-transfers?filter=to`;
-
-        const recentBlocks = 10;
         const timeoutMs = 10 * 60_000;
 
-        return await new Promise<TargetOutput>((resolve, reject) => {
-            let done = false;
+        // Get starting block
+        const startBlock = await publicClient.getBlockNumber();
 
-            const finish = (fn: () => void) => {
-                if (done) return;
-                done = true;
-                unwatch();
+        console.log(chalk.cyan(`🔍 Watching for XRP token transfers TO ${account.address} on XRPL-EVM (from block ${startBlock})`));
+
+        return await new Promise<TargetOutput>((resolve, reject) => {
+            let finished = false;
+            let unwatch: (() => void) | undefined;
+
+            const resolveOnce = (v: TargetOutput) => {
+                if (finished) return;
+                finished = true;
                 clearTimeout(timeoutId);
-                fn();
+                try { unwatch?.(); } catch {}
+                resolve(v);
+            };
+
+            const rejectOnce = (e: unknown) => {
+                if (finished) return;
+                finished = true;
+                clearTimeout(timeoutId);
+                try { unwatch?.(); } catch {}
+                reject(e instanceof Error ? e : new Error(String(e)));
             };
 
             const timeoutId = setTimeout(() => {
-                finish(() => reject(new Error("EVM observe timeout: no matching transfer")));
+                rejectOnce(new Error("Timeout: Axelar bridge not completed"));
             }, timeoutMs);
+            ctx.cleaner.trackTimer(timeoutId);
 
-            const unwatch = publicClient.watchBlockNumber({
-                onError: (e) => finish(() => reject(e)),
+            // Function to check for ERC-20 Transfer events to our account
+            const checkForTransfers = async (toBlock: bigint) => {
+                try {
+                    // Watch for ANY ERC-20 Transfer events to our account
+                    // We don't specify the token address since we don't know which wrapped XRP token Squid uses
+                    const logs = await publicClient.getLogs({
+                        event: {
+                            type: "event",
+                            name: "Transfer",
+                            inputs: [
+                                { indexed: true, name: "from", type: "address" },
+                                { indexed: true, name: "to", type: "address" },
+                                { indexed: false, name: "value", type: "uint256" },
+                            ],
+                        },
+                        fromBlock: startBlock,
+                        toBlock: toBlock,
+                        args: { to: account.address },
+                    });
+
+                    if (logs.length > 0) {
+                        console.log(chalk.dim(`   Found ${logs.length} token transfer(s) to account`));
+                    }
+
+                    // Take the first incoming transfer
+                    const log = logs.length > 0 ? logs[0] : undefined;
+
+                    if (log) {
+                        const from = (log as any).args?.from as string;
+                        const value = (log as any).args?.value as bigint | undefined;
+                        const xrpAmount = value ? Number(formatEther(value)) : 0;
+
+                        console.log(chalk.green(`✅ Found incoming XRP token transfer!`));
+                        console.log(chalk.dim(`   Token: ${log.address}`));
+                        console.log(chalk.dim(`   From: ${from}`));
+                        console.log(chalk.dim(`   Amount: ${xrpAmount} XRP`));
+                        console.log(chalk.dim(`   Tx: ${log.transactionHash}`));
+
+                        const receipt = await publicClient.getTransactionReceipt({ hash: log.transactionHash as Address });
+                        const gasUsed = receipt.gasUsed;
+                        const effectiveGasPrice = receipt.effectiveGasPrice || 0n;
+                        const gasFeeWei = gasUsed * effectiveGasPrice;
+                        const txFee = Number(formatEther(gasFeeWei));
+
+                        resolveOnce({
+                            xrpAmount,
+                            txHash: log.transactionHash as Address,
+                            finalizedAt: Date.now(),
+                            txFee,
+                        });
+                    }
+                } catch (err) {
+                    console.warn(chalk.yellow("Error checking for transfers:"), err);
+                }
+            };
+
+            // Check immediately for any existing transfers
+            (async () => {
+                try {
+                    const currentBlock = await publicClient.getBlockNumber();
+                    await checkForTransfers(currentBlock);
+                } catch (err) {
+                    console.warn(chalk.yellow("Error in initial transfer check:"), err);
+                }
+            })();
+
+            // Then watch for new blocks
+            unwatch = publicClient.watchBlockNumber({
+                onError: (e) => rejectOnce(e),
                 onBlockNumber: async (bn) => {
                     try {
-                        const res = await fetch(url, { headers: { accept: "application/json" } });
-                        if (!res.ok) throw new Error(`explorer http ${res.status}`);
-                        const data: any = await res.json();
-
-                        const current = Number(bn);
-
-                        console.log(`🔍 (📦 ${bn})`);
-
-                        const recentTxs = data.items.filter((tx: any) => Number(tx.block_number) > current - recentBlocks);
-
-                        const txFound = recentTxs.find((tx: any) => {
-                            const from = tx.from.hash.toLowerCase();
-                            return from === '0x0000000000000000000000000000000000000000';
-                        });
-
-                        if (txFound) {
-                            const txReceipt = await publicClient.getTransactionReceipt({
-                                hash: txFound.transaction_hash
-                            });
-
-                            const gasUsed = txReceipt.gasUsed;
-                            const effectiveGasPrice = txReceipt.effectiveGasPrice;
-                            const gasFeeWei = gasUsed * effectiveGasPrice;
-                            const txFee = Number(formatEther(gasFeeWei));
-
-                            finish(() =>
-                                resolve({
-                                    xrpAmount: Number(formatEther(BigInt(txFound.total.value))),
-                                    txHash: txFound.transaction_hash,
-                                    finalizedAt: Date.now(),
-                                    txFee
-                                } as TargetOutput)
-                            );
-                        }
+                        console.log(chalk.dim(`🔍 Checking block ${bn}...`));
+                        await checkForTransfers(bn);
                     } catch (err) {
-                        // Transient fetch error: ignore; watch continues
-                        // If you prefer, log debug here.
+                        console.warn(chalk.yellow("Error watching blocks:"), err);
                     }
                 },
             });

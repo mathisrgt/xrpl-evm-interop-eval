@@ -116,6 +116,10 @@ export interface RunContext {
             chain: import("viem").Chain;
             depositAddress?: string;
         };
+        squid?: {
+            route: any;
+            requestId: string;
+        };
     };
     cleaner: CleanupManager;
 }
