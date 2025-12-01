@@ -1,5 +1,5 @@
 import { Client, Payment, Wallet, convertStringToHex, dropsToXrp, xrpToDrops } from "xrpl";
-import type { ChainAdapter, RunContext, SourceOutput, TargetOutput, GasRefundOutput } from "../types";
+import type { ChainAdapter, RunContext, SourceOutput, TargetOutput, GasRefundOutput } from "../../types";
 import chalk from "chalk";
 
 export const xrplAdapter: ChainAdapter = {

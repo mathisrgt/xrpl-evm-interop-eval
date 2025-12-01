@@ -4,7 +4,7 @@ import { CleanupManager } from "./utils/cleanup";
 export type NetworkMode = "testnet" | "mainnet";
 
 /** Direction of a transfer in the bridge tests. */
-export type NetworkDirection = "xrpl_to_evm" | "evm_to_xrpl";
+export type NetworkDirection = "xrpl_to_base" | "base_to_xrpl" | "xrpl_to_xrpl_evm" | "xrpl_evm_to_xrpl";
 
 /** Output from the source chain after submitting a transfer. */
 export interface SourceOutput {
@@ -107,12 +107,14 @@ export interface RunContext {
         xrpl?: {
             client: import("xrpl").Client;
             wallet: import("xrpl").Wallet;
+            depositAddress?: string;
         };
         evm?: {
             publicClient: import("viem").PublicClient;
             walletClient: import("viem").WalletClient;
             account: import("viem").Account;
             chain: import("viem").Chain;
+            depositAddress?: string;
         };
     };
     cleaner: CleanupManager;

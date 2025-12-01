@@ -31,33 +31,21 @@ function formatTxHash(hash: string): string {
 }
 
 function getSourceChain(direction: NetworkDirection): 'xrpl' | 'evm' {
-    const parts = direction.split('_to_');
-
-    if (parts.length !== 2) {
-        throw new Error(`Invalid direction format: ${direction}. Expected 'source_to_target'`);
+    if (direction === 'xrpl_to_xrpl_evm' || direction === 'xrpl_to_base') {
+        return 'xrpl';
+    } else {
+        // xrpl_evm_to_xrpl or base_to_xrpl
+        return 'evm';
     }
-
-    const source = parts[0];
-    if (source !== 'xrpl' && source !== 'evm') {
-        throw new Error(`Invalid source chain: ${source}. Must be 'xrpl' or 'evm'`);
-    }
-
-    return source as 'xrpl' | 'evm';
 }
 
 function getTargetChain(direction: NetworkDirection): 'xrpl' | 'evm' {
-    const parts = direction.split('_to_');
-
-    if (parts.length !== 2) {
-        throw new Error(`Invalid direction format: ${direction}. Expected 'source_to_target'`);
+    if (direction === 'xrpl_to_xrpl_evm' || direction === 'xrpl_to_base') {
+        return 'evm';
+    } else {
+        // xrpl_evm_to_xrpl or base_to_xrpl
+        return 'xrpl';
     }
-
-    const target = parts[1];
-    if (target !== 'xrpl' && target !== 'evm') {
-        throw new Error(`Invalid target chain: ${target}. Must be 'xrpl' or 'evm'`);
-    }
-
-    return target as 'xrpl' | 'evm';
 }
 
 export function logStep(step: string): void {
@@ -257,23 +245,76 @@ async function selectNetworkMode(rl: readline.Interface): Promise<NetworkMode> {
 }
 
 /**
- * Display bridge direction selection menu
+ * Display bridge type selection menu
  */
-async function selectBridgeDirection(rl: readline.Interface): Promise<NetworkDirection> {
-    console.log(chalk.bold('\n🔄 Select Bridge Direction:'));
-    console.log(` 1) ${chalk.bold('XRPL → EVM')} ${chalk.dim('(XRPL to XRPL EVM)')}`);
-    console.log(` 2) ${chalk.bold('EVM → XRPL')} ${chalk.dim('(XRPL EVM to XRPL)')}`);
+async function selectBridgeType(rl: readline.Interface): Promise<string> {
+    console.log(chalk.bold('\n🌉 Select Bridge Type:'));
+    console.log(` 1) ${chalk.bold('Axelar')} ${chalk.dim('(Cross-chain communication protocol)')}`);
+    console.log(` 2) ${chalk.bold('Near Intents')} ${chalk.dim('(Intent-based bridge)')}`);
+    console.log(` 3) ${chalk.bold('FAsset')} ${chalk.dim('(Flare Asset bridge)')}`);
 
     while (true) {
         const answer = await askQuestion(rl, '\nEnter your choice: ');
 
         switch (answer) {
             case '1':
-                console.log(chalk.cyan('✓ Selected: XRPL → EVM'));
-                return 'xrpl_to_evm';
+                console.log(chalk.green('✓ Selected: Axelar'));
+                return 'axelar';
             case '2':
-                console.log(chalk.cyan('✓ Selected: EVM → XRPL'));
-                return 'evm_to_xrpl';
+                console.log(chalk.green('✓ Selected: Near Intents'));
+                return 'near-intents';
+            case '3':
+                console.log(chalk.green('✓ Selected: FAsset'));
+                return 'fasset';
+            default:
+                console.log(chalk.red('❌ Invalid choice. Please enter 1, 2, or 3.'));
+        }
+    }
+}
+
+/**
+ * Display bridge direction selection menu
+ */
+async function selectBridgeDirection(rl: readline.Interface, bridgeType: string): Promise<NetworkDirection> {
+    console.log(chalk.bold('\n🔄 Select Bridge Direction:'));
+
+    if (bridgeType === 'axelar') {
+        console.log(` 1) ${chalk.bold('XRPL → XRPL-EVM')} ${chalk.dim('(XRPL to XRPL EVM Sidechain)')}`);
+        console.log(` 2) ${chalk.bold('XRPL-EVM → XRPL')} ${chalk.dim('(XRPL EVM Sidechain to XRPL)')}`);
+    } else if (bridgeType === 'near-intents') {
+        console.log(` 1) ${chalk.bold('XRPL → Base')} ${chalk.dim('(XRPL to Base L2)')}`);
+        console.log(` 2) ${chalk.bold('Base → XRPL')} ${chalk.dim('(Base L2 to XRPL)')}`);
+    } else {
+        console.log(` 1) ${chalk.bold('XRPL → EVM')} ${chalk.dim('(XRPL to EVM chain)')}`);
+        console.log(` 2) ${chalk.bold('EVM → XRPL')} ${chalk.dim('(EVM chain to XRPL)')}`);
+    }
+
+    while (true) {
+        const answer = await askQuestion(rl, '\nEnter your choice: ');
+
+        switch (answer) {
+            case '1':
+                if (bridgeType === 'axelar') {
+                    console.log(chalk.cyan('✓ Selected: XRPL → XRPL-EVM'));
+                    return 'xrpl_to_xrpl_evm';
+                } else if (bridgeType === 'near-intents') {
+                    console.log(chalk.cyan('✓ Selected: XRPL → Base'));
+                    return 'xrpl_to_base';
+                } else {
+                    console.log(chalk.cyan('✓ Selected: XRPL → EVM'));
+                    return 'xrpl_to_evm' as NetworkDirection;
+                }
+            case '2':
+                if (bridgeType === 'axelar') {
+                    console.log(chalk.cyan('✓ Selected: XRPL-EVM → XRPL'));
+                    return 'xrpl_evm_to_xrpl';
+                } else if (bridgeType === 'near-intents') {
+                    console.log(chalk.cyan('✓ Selected: Base → XRPL'));
+                    return 'base_to_xrpl';
+                } else {
+                    console.log(chalk.cyan('✓ Selected: EVM → XRPL'));
+                    return 'evm_to_xrpl' as NetworkDirection;
+                }
             default:
                 console.log(chalk.red('❌ Invalid choice. Please enter 1 or 2.'));
         }
@@ -360,7 +401,7 @@ async function confirmConfiguration(rl: readline.Interface, config: RunConfig): 
 }
 
 
-export async function showMenu(): Promise<RunConfig> {
+export async function showMenu(): Promise<{ config: RunConfig; bridgeType: string }> {
     const rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout
@@ -371,7 +412,8 @@ export async function showMenu(): Promise<RunConfig> {
 
         // Collect all configuration parameters
         const networkMode = await selectNetworkMode(rl);
-        const networkDirection = await selectBridgeDirection(rl);
+        const bridgeType = await selectBridgeType(rl);
+        const networkDirection = await selectBridgeDirection(rl, bridgeType);
         const xrpAmount = await selectXrpAmount(rl, networkMode);
         const nbRuns = await selectNumberOfRuns(rl);
 
@@ -387,7 +429,7 @@ export async function showMenu(): Promise<RunConfig> {
 
         console.log(chalk.green('\n✅ Starting bridge test with your configuration...\n'));
 
-        return config;
+        return { config, bridgeType };
 
     } finally {
         rl.close();

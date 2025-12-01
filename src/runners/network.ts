@@ -15,7 +15,7 @@ export const NETWORK_CONFIG: Record<NetworkMode, NetworkConfig> = {
       rpcUrl: "https://rpc.xrplevm.org",
       walletPrivateKey: EVM_WALLET_PRIVATE_KEY,
       gateway: "B5FB4BE02232B1bBA4dC8f81dc24C26980dE9e3C", // Gateway contract
-      relayer: "ce16F69375520ab01377ce7B88f5BA8C48F8D666", // Relayer (e.g. SquidRouter)
+      relayer: "ce16F69375520ab01377ce7B88f5BA8C48F8D666", // Relayer Proxy (e.g. SquidRouter) // "DC74A55C7F58a02FC3c25888790E6Ec6BCcB43D6" Relayer Implementation (Squid Router)
       // gas_refunder: "0x2d5d7d31F671F86C782533cc367F14109a082712" // Axelar Gas Service - No longer used
     },
   },

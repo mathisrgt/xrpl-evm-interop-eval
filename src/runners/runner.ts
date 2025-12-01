@@ -1,6 +1,4 @@
 import { ChainAdapter, NetworkDirection, RunContext, SourceOutput, TargetOutput, GasRefundOutput } from "../types";
-import { xrplAdapter } from "../adapters/xrpl.adapter";
-import { evmAdapter } from "../adapters/evm.adapter";
 
 /**
  * Runner that abstracts the direction-specific logic
@@ -11,16 +9,10 @@ export class Runner {
     private targetAdapter: ChainAdapter;
     private direction: NetworkDirection;
 
-    constructor(direction: NetworkDirection) {
+    constructor(direction: NetworkDirection, sourceAdapter: ChainAdapter, targetAdapter: ChainAdapter) {
         this.direction = direction;
-
-        if (direction === "xrpl_to_evm") {
-            this.sourceAdapter = xrplAdapter;
-            this.targetAdapter = evmAdapter;
-        } else {
-            this.sourceAdapter = evmAdapter;
-            this.targetAdapter = xrplAdapter;
-        }
+        this.sourceAdapter = sourceAdapter;
+        this.targetAdapter = targetAdapter;
     }
 
     /**
@@ -59,10 +51,17 @@ export class Runner {
      * Get human-readable names for source and target chains
      */
     getChainNames(): { source: string; target: string } {
-        if (this.direction === "xrpl_to_evm") {
-            return { source: "XRPL", target: "EVM" };
+        if (this.direction === "xrpl_to_xrpl_evm") {
+            return { source: "XRPL", target: "XRPL-EVM" };
+        } else if (this.direction === "xrpl_evm_to_xrpl") {
+            return { source: "XRPL-EVM", target: "XRPL" };
+        } else if (this.direction === "xrpl_to_base") {
+            return { source: "XRPL", target: "Base" };
+        } else if (this.direction === "base_to_xrpl") {
+            return { source: "Base", target: "XRPL" };
         } else {
-            return { source: "EVM", target: "XRPL" };
+            // Fallback for any other direction
+            return { source: "Unknown", target: "Unknown" };
         }
     }
 }

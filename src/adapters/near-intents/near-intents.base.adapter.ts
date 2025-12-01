@@ -1,0 +1,254 @@
+import { Address, createPublicClient, createWalletClient, erc20Abi, formatEther, formatUnits, http, parseUnits } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../../types";
+import { base } from "../../utils/chains";
+import { NEAR_INTENTS_TOKEN_IDS, USDC_BASE_ADDRESS } from "../../utils/constants";
+import { EVM_WALLET_PRIVATE_KEY } from "../../utils/environment";
+import { OneClickService, OpenAPI, QuoteRequest } from "@defuse-protocol/one-click-sdk-typescript";
+import { ONE_CLICK_JWT } from "../../utils/environment";
+
+export const baseAdapter: ChainAdapter = {
+
+    async prepare(ctx: RunContext) {
+
+        const publicClient = createPublicClient({
+            chain: base,
+            transport: http()
+        });
+
+        const walletClient = createWalletClient({
+            chain: base,
+            transport: http()
+        });
+
+        const account = privateKeyToAccount(`0x${EVM_WALLET_PRIVATE_KEY}`);
+        ctx.cache.evm = { publicClient, walletClient, account, chain: base };
+    },
+
+    async submit(ctx: RunContext): Promise<SourceOutput> {
+        const { account, walletClient, publicClient } = ctx.cache.evm!;
+        const { wallet: xrplWallet } = ctx.cache.xrpl!;
+
+        if (!walletClient || !account || !publicClient || !xrplWallet) {
+            throw new Error("EVM or XRPL not prepared");
+        }
+
+        OpenAPI.BASE = 'https://1click.chaindefuser.com';
+        OpenAPI.TOKEN = ONE_CLICK_JWT;
+
+        const usdcAmount = parseUnits((ctx.cfg.xrpAmount * 2).toString(), 6);
+
+        console.log(`\n📋 Near Intents Quote Request:`);
+        console.log(`   Origin: USDC on Base → Destination: XRP on XRPL`);
+        console.log(`   Amount: ${formatUnits(usdcAmount, 6)} USDC`);
+        console.log(`   Recipient (XRPL): ${xrplWallet.address}`);
+        console.log(`   Refund To (Base): ${account.address}`);
+
+        const quoteRequest: QuoteRequest = {
+            dry: false,
+            swapType: QuoteRequest.swapType.EXACT_INPUT,
+            slippageTolerance: 100,
+            originAsset: NEAR_INTENTS_TOKEN_IDS.USDC_ON_BASE,
+            depositType: QuoteRequest.depositType.ORIGIN_CHAIN,
+            destinationAsset: NEAR_INTENTS_TOKEN_IDS.XRP_ON_XRPL,
+            amount: usdcAmount.toString(),
+            refundTo: account.address,
+            refundType: QuoteRequest.refundType.ORIGIN_CHAIN,
+            recipient: xrplWallet.address,
+            recipientType: QuoteRequest.recipientType.DESTINATION_CHAIN,
+            deadline: new Date(Date.now() + 3 * 60 * 1000).toISOString(),
+            referral: "xrpl-evm-interop-eval",
+            quoteWaitingTimeMs: 3000,
+        };
+
+        const quote = await OneClickService.getQuote(quoteRequest);
+
+        if (!quote.quote?.depositAddress) {
+            throw new Error("No deposit address in quote");
+        }
+
+        if (!ctx.cache.evm) {
+            throw new Error("No xrpl environment in cache");
+        }
+
+        const depositAddress = quote.quote?.depositAddress;
+        ctx.cache.evm.depositAddress = depositAddress;
+
+        console.log(`\n✅ Near Intents Quote Received:`);
+        console.log(`   Deposit Address: ${depositAddress}`);
+        console.log(`   Deadline: ${new Date(Date.now() + 3 * 60 * 1000).toISOString()}`);
+
+        const submittedAt = Date.now();
+
+        console.log(`\n💸 Transferring USDC to Near Intents deposit address...`);
+
+        const txHash = await walletClient.writeContract({
+            account,
+            address: USDC_BASE_ADDRESS,
+            abi: erc20Abi,
+            functionName: 'transfer',
+            args: [depositAddress as Address, usdcAmount],
+            chain: base
+        });
+
+        console.log(`   Tx Hash: ${txHash}`);
+        console.log(`   Waiting for confirmation...`);
+
+        const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+
+        console.log(`✅ USDC Transfer Confirmed (Block ${receipt.blockNumber})`);
+        console.log(`   Gas Used: ${receipt.gasUsed.toString()}`);
+        console.log(`   Status: ${receipt.status === 'success' ? '✅ Success' : '❌ Failed'}`);
+
+        const gasUsed = receipt.gasUsed;
+        const effectiveGasPrice = receipt.effectiveGasPrice || 0n;
+        const gasFeeWei = gasUsed * effectiveGasPrice;
+        const txFee = Number(formatEther(gasFeeWei));
+
+        return { xrpAmount: ctx.cfg.xrpAmount, txHash, submittedAt, txFee };
+    },
+
+    async observe(ctx: RunContext): Promise<TargetOutput> {
+        const { publicClient, account, depositAddress } = ctx.cache.evm!;
+        if (!publicClient || !account) throw new Error("EVM not prepared");
+
+        const timeoutMs = 5 * 60_000;
+
+        // Use the block where we submitted, or current block if not available
+        const submitBlockNumber = (ctx.cache.evm as any).submitBlockNumber;
+        const startBlock = submitBlockNumber || await publicClient.getBlockNumber();
+
+        console.log(`🔍 Watching for USDC transfers TO ${account.address} on Base (from block ${startBlock})`);
+        if (submitBlockNumber) {
+            console.log(`   Starting from submit block: ${submitBlockNumber}`);
+        }
+        if (depositAddress) {
+            console.log(`   Excluding transfers FROM deposit address: ${depositAddress}`);
+        }
+
+        return await new Promise<TargetOutput>((resolve, reject) => {
+            let finished = false;
+            let unwatch: (() => void) | undefined;
+
+            const resolveOnce = (v: TargetOutput) => {
+                if (finished) return;
+                finished = true;
+                clearTimeout(timeoutId);
+                try { unwatch?.(); } catch {}
+                resolve(v);
+            };
+
+            const rejectOnce = (e: unknown) => {
+                if (finished) return;
+                finished = true;
+                clearTimeout(timeoutId);
+                try { unwatch?.(); } catch {}
+                reject(e instanceof Error ? e : new Error(String(e)));
+            };
+
+            const timeoutId = setTimeout(() => {
+                rejectOnce(new Error("Timeout: Near Intents execution not completed"));
+            }, timeoutMs);
+            ctx.cleaner.trackTimer(timeoutId);
+
+            // Function to check for transfers in a given block range
+            const checkForTransfers = async (toBlock: bigint) => {
+                const logs = await publicClient.getLogs({
+                    address: USDC_BASE_ADDRESS,
+                    event: {
+                        type: "event",
+                        name: "Transfer",
+                        inputs: [
+                            { indexed: true, name: "from", type: "address" },
+                            { indexed: true, name: "to", type: "address" },
+                            { indexed: false, name: "value", type: "uint256" },
+                        ],
+                    },
+                    fromBlock: startBlock,
+                    toBlock: toBlock,
+                    args: { to: account.address },
+                });
+
+                if (logs.length > 0) {
+                    console.log(`   Found ${logs.length} transfer(s) to account`);
+                }
+
+                // Filter out the outgoing transfer to deposit address
+                const incomingLogs = logs.filter((log) => {
+                    const from = (log as any).args?.from as string | undefined;
+                    const fromLower = from?.toLowerCase();
+                    const depositLower = depositAddress?.toLowerCase();
+
+                    // Exclude transfers FROM the deposit address (our outgoing transfer)
+                    if (depositLower && fromLower === depositLower) {
+                        console.log(`   Skipping outgoing transfer to deposit address in tx ${log.transactionHash}`);
+                        return false;
+                    }
+
+                    // Exclude transfers FROM our own account (self-transfers)
+                    if (fromLower === account.address.toLowerCase()) {
+                        console.log(`   Skipping self-transfer in tx ${log.transactionHash}`);
+                        return false;
+                    }
+
+                    return true;
+                });
+
+                // Take the first incoming transfer (not the last)
+                const log = incomingLogs.length > 0 ? incomingLogs[0] : undefined;
+
+                if (log) {
+                    const from = (log as any).args?.from as string;
+                    const value = (log as any).args?.value as bigint | undefined;
+                    const targetAmount = value ? Number(formatUnits(value, 6)) : 0;
+
+                    console.log(`✅ Found incoming USDC transfer!`);
+                    console.log(`   From: ${from}`);
+                    console.log(`   Amount: ${targetAmount} USDC`);
+                    console.log(`   Tx: ${log.transactionHash}`);
+
+                    const receipt = await publicClient.getTransactionReceipt({ hash: log.transactionHash as Address });
+                    const gasUsed = receipt.gasUsed;
+                    const effectiveGasPrice = receipt.effectiveGasPrice || 0n;
+                    const gasFeeWei = gasUsed * effectiveGasPrice;
+                    const txFee = Number(formatEther(gasFeeWei));
+
+                    resolveOnce({
+                        xrpAmount: targetAmount,
+                        txHash: log.transactionHash as Address,
+                        finalizedAt: Date.now(),
+                        txFee,
+                    });
+                }
+            };
+
+            // Check immediately for any existing transfers
+            (async () => {
+                try {
+                    const currentBlock = await publicClient.getBlockNumber();
+                    await checkForTransfers(currentBlock);
+                } catch (err) {
+                    console.warn("Error in initial transfer check:", err);
+                }
+            })();
+
+            // Then watch for new blocks
+            unwatch = publicClient.watchBlockNumber({
+                onError: (e) => rejectOnce(e),
+                onBlockNumber: async (bn) => {
+                    try {
+                        await checkForTransfers(bn);
+                    } catch (err) {
+                        console.warn("Error watching base logs:", err);
+                    }
+                },
+            });
+
+            ctx.cleaner.trackViemUnwatch(unwatch);
+        });
+    },
+
+    async observeGasRefund(ctx: RunContext): Promise<GasRefundOutput> {
+        return { xrpAmount: 0, txHash: "n/a" };
+    }
+}

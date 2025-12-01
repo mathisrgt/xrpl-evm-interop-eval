@@ -1,8 +1,8 @@
 import { createPublicClient, createWalletClient, encodeFunctionData, erc20Abi, formatEther, http, parseEther } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { xrplevmTestnet } from "viem/chains";
-import { ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../types";
-import { xrplevm } from "../utils/chains";
+import { ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../../types";
+import { xrplevm } from "../../utils/chains";
 import {
     EVM_GATEWAY_ABI,
     GAS_SERVICE_ADDRESS,
@@ -11,8 +11,9 @@ import {
     INTERCHAIN_TOKEN_SERVICE_ADDRESS,
     NATIVE_TOKEN_ADDRESS,
     XRP_TOKEN_ID
-} from "../utils/constants";
-import { EVM_WALLET_PRIVATE_KEY } from "../utils/environment";
+} from "../../utils/constants";
+import { EVM_WALLET_PRIVATE_KEY } from "../../utils/environment";
+import { waitWithCountdown } from "../../utils/time";
 
 export const evmAdapter: ChainAdapter = {
 
@@ -117,11 +118,39 @@ export const evmAdapter: ChainAdapter = {
             address: `0x${ctx.cfg.networks.evm.relayer}`,
             abi: EVM_GATEWAY_ABI,
             functionName: "fundAndRunMulticall",
-            args: [
-                NATIVE_TOKEN_ADDRESS,       // token: address (native XRP)
-                amountInWei,                // amount: uint256 (total XRP amount to transfer)
-                multicallData               // calls: tuple[] (array of multicall operations)
-            ],
+            // args: [
+            //     NATIVE_TOKEN_ADDRESS,       // token: address (native XRP)
+            //     amountInWei,                // amount: uint256 (total XRP amount to transfer)
+            //     multicallData               // calls: tuple[] (array of multicall operations)
+            // ],
+            args:
+                [
+                    "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+                    4000000000000000000n,
+                    [
+                        [
+                            "1",
+                            "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+                            "0",
+                            "0x095ea7b3000000000000000000000000b5fb4be02232b1bba4dc8f81dc24c26980de9e3c0000000000000000000000000000000000000000000000003782dace9d900000",
+                            "0x000000000000000000000000eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee0000000000000000000000000000000000000000000000000000000000000001"
+                        ],
+                        [
+                            "1",
+                            "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+                            "0",
+                            "0x095ea7b3000000000000000000000000db0a778c57bd31e401d52ba6cf936d06e1324ae80000000000000000000000000000000000000000000000003782dace9d900000",
+                            "0x000000000000000000000000eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee0000000000000000000000000000000000000000000000000000000000000001"
+                        ],
+                        [
+                            "0",
+                            "0xB5FB4BE02232B1bBA4dC8f81dc24C26980dE9e3C",
+                            "172772783898376077",
+                            "0xda081c73ba5a21ca88ef6bba2bfff5088994f90e1077e2a1cc3dcc38bd261f00fce2824f00000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000003782dace9d90000000000000000000000000000000000000000000000000000000000000000001600000000000000000000000000000000000000000000000000265cfee7b1e378d00000000000000000000000000000000000000000000000000000000000000047872706c000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000022726862536b7972514552314a734c42314e566b795166365271727877376b794b64630000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                            "0x000000000000000000000000eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee0000000000000000000000000000000000000000000000000000000000000003"
+                        ]
+                    ]
+                ],
             value: 0n,
             chain: ctx.cache.evm?.chain
         });
@@ -148,6 +177,8 @@ export const evmAdapter: ChainAdapter = {
         const { publicClient, account } = ctx.cache.evm!;
 
         if (!publicClient || !account) throw new Error("EVM not prepared");
+
+        await waitWithCountdown(60000, "Bridge being performed...");
 
         const url = `${ctx.cache.evm?.chain.blockExplorers?.default.apiUrl}/addresses/${account.address}/token-transfers?filter=to`;
 

@@ -9,6 +9,16 @@ export const XRP_TOKEN_ID = "0xba5a21ca88ef6bba2bfff5088994f90e1077e2a1cc3dcc38b
 // Gas payment amount for interchain transfers (0.5 XRP)
 export const INTERCHAIN_GAS_AMOUNT = 500000000000000000n;
 
+// Near Intents (OneClick SDK) Token IDs
+export const NEAR_INTENTS_TOKEN_IDS = {
+    XRP_ON_XRPL: 'nep141:xrp.omft.near',
+    USDC_ON_BASE: 'nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near',
+    ETH_ON_BASE: 'nep141:base-0x4200000000000000000000000000000000000006.omft.near',
+} as const;
+
+// USDC contract address on Base mainnet
+export const USDC_BASE_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const;
+
 // ABI for Interchain Token Service
 export const INTERCHAIN_TOKEN_SERVICE_ABI = [
     {

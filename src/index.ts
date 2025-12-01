@@ -1,14 +1,14 @@
 import chalk from "chalk";
 import { createRunContext, createRunRecord, updateTimestamp, updateTxHash } from "./runners/context";
-import { Runner } from "./runners/runner";
 import type { RunRecord } from "./types";
 import { saveBatchArtifacts } from "./utils/fsio";
 import { displayMetrics, logConfig, logError, logObserve, logPrepare, logRecord, logStep, logSubmit, showMenu } from "./utils/logger";
 import { waitWithCountdown } from "./utils/time";
 import { computeMetrics } from "./utils/metrics";
+import { createRunner, BridgeType } from "./runners/runner.factory";
 
 async function main() {
-    const cfg = await showMenu();
+    const { config: cfg, bridgeType } = await showMenu();
 
     logStep("configuration");
     logConfig(cfg);
@@ -19,7 +19,9 @@ async function main() {
         cfg.tag
     ].join("_");
 
-    const runner = new Runner(cfg.direction);
+    console.log(chalk.cyan(`🌉 Using bridge: ${bridgeType}\n`));
+
+    const runner = createRunner(bridgeType as BridgeType, cfg.direction);
 
     const records: RunRecord[] = [];
     let successCount = 0;
@@ -54,7 +56,6 @@ async function main() {
 
                 logStep(`observe`);
                 updateTimestamp(runCtx, 't2_observe', srcOutput.submittedAt);
-                await waitWithCountdown(60000, "Bridge being performed...");
                 const trgOutput = await runner.observe(runCtx);
                 updateTxHash(runCtx, 'targetTxHash', trgOutput.txHash);
                 updateTimestamp(runCtx, 't3_finalized', trgOutput.finalizedAt);
@@ -103,15 +104,15 @@ async function main() {
             }
         }
 
-        if (records.length > 0) {
-            logStep("Metrics");
-            const metricsReport = computeMetrics(cfg, records, (Date.now() - batchStartTime));
-            displayMetrics(metricsReport.summary);
+        // if (records.length > 0) {
+        //     logStep("Metrics");
+        //     const metricsReport = computeMetrics(cfg, records, (Date.now() - batchStartTime));
+        //     displayMetrics(metricsReport.summary);
 
-            console.log(chalk.bold('\n💾 Saving batch records...'));
-            saveBatchArtifacts(batchId, cfg, ctx, records, metricsReport);
-            console.log(chalk.green(`✅ Batch saved: ${batchId}`));
-        }
+        //     console.log(chalk.bold('\n💾 Saving batch records...'));
+        //     saveBatchArtifacts(batchId, cfg, ctx, records, metricsReport);
+        //     console.log(chalk.green(`✅ Batch saved: ${batchId}`));
+        // }
     } catch (err) {
         logError("Fatal error during batch execution", "BATCH_ERROR", err instanceof Error ? err : undefined);
         console.error(err);
