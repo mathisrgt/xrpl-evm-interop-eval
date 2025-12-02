@@ -4,7 +4,7 @@ import { CleanupManager } from "./utils/cleanup";
 export type NetworkMode = "testnet" | "mainnet";
 
 /** Direction of a transfer in the bridge tests. */
-export type NetworkDirection = "xrpl_to_base" | "base_to_xrpl" | "xrpl_to_xrpl_evm" | "xrpl_evm_to_xrpl";
+export type NetworkDirection = "xrpl_to_base" | "base_to_xrpl" | "xrpl_to_xrpl_evm" | "xrpl_evm_to_xrpl" | "xrpl_to_flare" | "flare_to_xrpl";
 
 /** Output from the source chain after submitting a transfer. */
 export interface SourceOutput {

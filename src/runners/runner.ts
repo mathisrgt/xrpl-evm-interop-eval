@@ -118,6 +118,10 @@ export class Runner {
             return { source: "XRPL", target: "Base" };
         } else if (this.direction === "base_to_xrpl") {
             return { source: "Base", target: "XRPL" };
+        } else if (this.direction === "xrpl_to_flare") {
+            return { source: "XRPL", target: "Flare" };
+        } else if (this.direction === "flare_to_xrpl") {
+            return { source: "Flare", target: "XRPL" };
         } else {
             // Fallback for any other direction
             return { source: "Unknown", target: "Unknown" };

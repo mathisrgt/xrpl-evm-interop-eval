@@ -26,19 +26,19 @@ function formatAmount(amount: number | string, unit: string = 'XRP'): string {
 }
 
 function getSourceChain(direction: NetworkDirection): 'xrpl' | 'evm' {
-    if (direction === 'xrpl_to_xrpl_evm' || direction === 'xrpl_to_base') {
+    if (direction === 'xrpl_to_xrpl_evm' || direction === 'xrpl_to_base' || direction === 'xrpl_to_flare') {
         return 'xrpl';
     } else {
-        // xrpl_evm_to_xrpl or base_to_xrpl
+        // xrpl_evm_to_xrpl, base_to_xrpl, or flare_to_xrpl
         return 'evm';
     }
 }
 
 function getTargetChain(direction: NetworkDirection): 'xrpl' | 'evm' {
-    if (direction === 'xrpl_to_xrpl_evm' || direction === 'xrpl_to_base') {
+    if (direction === 'xrpl_to_xrpl_evm' || direction === 'xrpl_to_base' || direction === 'xrpl_to_flare') {
         return 'evm';
     } else {
-        // xrpl_evm_to_xrpl or base_to_xrpl
+        // xrpl_evm_to_xrpl, base_to_xrpl, or flare_to_xrpl
         return 'xrpl';
     }
 }
@@ -277,6 +277,9 @@ async function selectBridgeDirection(rl: readline.Interface, bridgeType: string)
     } else if (bridgeType === 'near-intents') {
         console.log(` 1) ${chalk.bold('XRPL → Base')} ${chalk.dim('(XRPL to Base L2)')}`);
         console.log(` 2) ${chalk.bold('Base → XRPL')} ${chalk.dim('(Base L2 to XRPL)')}`);
+    } else if (bridgeType === 'fasset') {
+        console.log(` 1) ${chalk.bold('XRPL → Flare')} ${chalk.dim('(XRPL to Flare - Manual bridge)')}`);
+        console.log(` 2) ${chalk.bold('Flare → XRPL')} ${chalk.dim('(Flare to XRPL - Manual bridge)')}`);
     } else {
         console.log(` 1) ${chalk.bold('XRPL → EVM')} ${chalk.dim('(XRPL to EVM chain)')}`);
         console.log(` 2) ${chalk.bold('EVM → XRPL')} ${chalk.dim('(EVM chain to XRPL)')}`);
@@ -293,6 +296,9 @@ async function selectBridgeDirection(rl: readline.Interface, bridgeType: string)
                 } else if (bridgeType === 'near-intents') {
                     console.log(chalk.cyan('✓ Selected: XRPL → Base'));
                     return 'xrpl_to_base';
+                } else if (bridgeType === 'fasset') {
+                    console.log(chalk.cyan('✓ Selected: XRPL → Flare'));
+                    return 'xrpl_to_flare';
                 } else {
                     console.log(chalk.cyan('✓ Selected: XRPL → EVM'));
                     return 'xrpl_to_evm' as NetworkDirection;
@@ -304,6 +310,9 @@ async function selectBridgeDirection(rl: readline.Interface, bridgeType: string)
                 } else if (bridgeType === 'near-intents') {
                     console.log(chalk.cyan('✓ Selected: Base → XRPL'));
                     return 'base_to_xrpl';
+                } else if (bridgeType === 'fasset') {
+                    console.log(chalk.cyan('✓ Selected: Flare → XRPL'));
+                    return 'flare_to_xrpl';
                 } else {
                     console.log(chalk.cyan('✓ Selected: EVM → XRPL'));
                     return 'evm_to_xrpl' as NetworkDirection;
@@ -407,8 +416,21 @@ export async function showMenu(): Promise<{ config: RunConfig; bridgeType: strin
         const networkMode = await selectNetworkMode(rl);
         const bridgeType = await selectBridgeType(rl);
         const networkDirection = await selectBridgeDirection(rl, bridgeType);
-        const xrpAmount = await selectXrpAmount(rl, networkMode);
-        const nbRuns = await selectNumberOfRuns(rl);
+
+        // FAsset bridge has fixed amount and runs
+        let xrpAmount: number;
+        let nbRuns: number;
+
+        if (bridgeType === 'fasset') {
+            xrpAmount = 10;
+            nbRuns = 1;
+            console.log(chalk.cyan('\n💰 FAsset bridge uses fixed configuration:'));
+            console.log(chalk.dim('   Amount: 10 XRP/FXRP per transaction'));
+            console.log(chalk.dim('   Runs: 1 (manual bridge operation)'));
+        } else {
+            xrpAmount = await selectXrpAmount(rl, networkMode);
+            nbRuns = await selectNumberOfRuns(rl);
+        }
 
         const config = loadConfig(networkMode, networkDirection, xrpAmount, nbRuns, bridgeType);
 
