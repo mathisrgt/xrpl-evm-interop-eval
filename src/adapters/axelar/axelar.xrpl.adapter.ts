@@ -56,9 +56,14 @@ export const xrplAdapter: ChainAdapter = {
 
         console.log(chalk.cyan('🔍 Getting Squid route...'));
 
-        let retries = 3;
-        while (retries > 0) {
+        // Retry logic for getting Squid route (max 3 attempts)
+        const maxRetries = 3;
+        let lastError;
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
+                console.log(chalk.cyan(`🔄 Route attempt ${attempt}/${maxRetries}...`));
+
                 const result = await axios.post(
                     "https://v2.api.squidrouter.com/v2/route",
                     params,
@@ -76,23 +81,30 @@ export const xrplAdapter: ChainAdapter = {
                     requestId
                 };
 
-                console.log(chalk.green('✓ Squid route obtained'));
+                console.log(chalk.green('✓ Squid route obtained successfully'));
                 return;
             } catch (error: any) {
-                if (error.response?.status === 429 && retries > 1) {
-                    console.log(chalk.yellow(`Rate limited, waiting 3s... (${retries - 1} retries left)`));
-                    await delay(3000);
-                    retries--;
+                lastError = error;
+                const errorMsg = error.response?.data?.message || error.response?.data || error.message || 'Unknown error';
+                const statusCode = error.response?.status || 'N/A';
+
+                console.log(chalk.red(`❌ Route attempt ${attempt}/${maxRetries} failed (${statusCode}): ${errorMsg}`));
+
+                if (attempt < maxRetries) {
+                    const waitTime = attempt * 2000; // Exponential backoff: 2s, 4s
+                    console.log(chalk.yellow(`⏳ Waiting ${waitTime/1000}s before retry...`));
+                    await delay(waitTime);
                 } else {
+                    console.log(chalk.red(`❌ All ${maxRetries} route attempts failed`));
                     if (error.response) {
-                        console.error(chalk.red("Squid API error:"), error.response.data);
+                        console.error(chalk.red("Last Squid API error:"), error.response.data);
                     }
-                    throw error;
+                    throw new Error(`Failed to get Squid route after ${maxRetries} attempts: ${errorMsg}`);
                 }
             }
         }
 
-        throw new Error('Failed to get Squid route after retries');
+        throw new Error(`Failed to get Squid route: ${lastError?.message || 'Unknown error'}`);
     },
 
     /** Submit XRPL Payment using Squid route */
@@ -138,7 +150,7 @@ export const xrplAdapter: ChainAdapter = {
         console.log(chalk.dim(`TX Hash: ${txHash}`));
         console.log(chalk.dim(`Explorer: https://livenet.xrpl.org/transactions/${txHash}`));
 
-        return { xrpAmount: ctx.cfg.xrpAmount, txHash, submittedAt, txFee };
+        return { xrpAmount: ctx.cfg.xrpAmount, txHash, submittedAt, txFee, currency: 'XRP' };
     },
 
     /** Monitor the incoming transaction on the blockchain */
@@ -188,6 +200,7 @@ export const xrplAdapter: ChainAdapter = {
                         txHash: data.hash,
                         finalizedAt,
                         txFee: txFeeXrp,
+                        currency: 'XRP',
                     } as TargetOutput);
                 } catch (err) {
                     rejectOnce(err);

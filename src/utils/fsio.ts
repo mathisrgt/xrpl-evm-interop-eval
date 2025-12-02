@@ -146,13 +146,13 @@ export function summaryToCsvRow(
     latency_std_ms: s.latency.stdDevMs ?? "",
 
     cost_n: s.costs?.n ?? "",
-    cost_mean_total_xrp: s.costs?.meanTotalXrp ?? "",
-    cost_min_total_xrp: s.costs?.minTotalXrp ?? "",
-    cost_max_total_xrp: s.costs?.maxTotalXrp ?? "",
-    cost_std_total_xrp: s.costs?.stdDevTotalXrp ?? "",
-    cost_mean_bridge_xrp: s.costs?.meanBridgeXrp ?? "",
-    cost_mean_source_fee_xrp: s.costs?.meanSourceFeeXrp ?? "",
-    cost_mean_target_fee_xrp: s.costs?.meanTargetFeeXrp ?? "",
+    cost_mean_total: s.costs?.meanTotal ?? "",
+    cost_min_total: s.costs?.minTotal ?? "",
+    cost_max_total: s.costs?.maxTotal ?? "",
+    cost_std_total: s.costs?.stdDevTotal ?? "",
+    cost_mean_bridge: s.costs?.meanBridge ?? "",
+    cost_mean_source_fee: s.costs?.meanSourceFee ?? "",
+    cost_mean_target_fee: s.costs?.meanTargetFee ?? "",
 
     batchDurationMs: s.batchDurationMs ?? "",
 
@@ -186,13 +186,13 @@ export const SUMMARY_CSV_HEADERS: string[] = [
   "latency_std_ms",
 
   "cost_n",
-  "cost_mean_total_xrp",
-  "cost_min_total_xrp",
-  "cost_max_total_xrp",
-  "cost_std_total_xrp",
-  "cost_mean_bridge_xrp",
-  "cost_mean_source_fee_xrp",
-  "cost_mean_target_fee_xrp",
+  "cost_mean_total",
+  "cost_min_total",
+  "cost_max_total",
+  "cost_std_total",
+  "cost_mean_bridge",
+  "cost_mean_source_fee",
+  "cost_mean_target_fee",
 
   "batchDurationMs",
 
@@ -297,10 +297,12 @@ export function computeDirectionSummary(direction: NetworkDirection, mode: Netwo
   const aggregatedSummary: MetricsSummary = {
     timestampIso: new Date().toISOString(),
     tag: `${mode}_${direction}_aggregated`,
+    bridgeName: allSummaries[0]?.bridgeName || 'unknown',
     direction,
     xrpAmount: allSummaries[0]?.xrpAmount || 0,
+    currency: allSummaries[0]?.currency || 'XRP',
     runsPlanned: allSummaries.reduce((sum, s) => sum + s.runsPlanned, 0),
-    
+
     totalRuns,
     successCount,
     failureCount,
@@ -320,13 +322,13 @@ export function computeDirectionSummary(direction: NetworkDirection, mode: Netwo
 
     costs: {
       n: allCosts.length,
-      meanTotalXrp: mean(allCosts),
-      minTotalXrp: allCosts.length ? Math.min(...allCosts) : null,
-      maxTotalXrp: allCosts.length ? Math.max(...allCosts) : null,
-      stdDevTotalXrp: stddev(allCosts),
-      meanBridgeXrp: mean(allBridgeCosts),
-      meanSourceFeeXrp: mean(allSourceFees),
-      meanTargetFeeXrp: mean(allTargetFees),
+      meanTotal: mean(allCosts),
+      minTotal: allCosts.length ? Math.min(...allCosts) : null,
+      maxTotal: allCosts.length ? Math.max(...allCosts) : null,
+      stdDevTotal: stddev(allCosts),
+      meanBridge: mean(allBridgeCosts),
+      meanSourceFee: mean(allSourceFees),
+      meanTargetFee: mean(allTargetFees),
     },
 
     batchDurationMs: allSummaries.reduce((sum, s) => sum + (s.batchDurationMs || 0), 0),

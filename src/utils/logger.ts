@@ -417,7 +417,7 @@ export async function showMenu(): Promise<{ config: RunConfig; bridgeType: strin
         const xrpAmount = await selectXrpAmount(rl, networkMode);
         const nbRuns = await selectNumberOfRuns(rl);
 
-        const config = loadConfig(networkMode, networkDirection, xrpAmount, nbRuns);
+        const config = loadConfig(networkMode, networkDirection, xrpAmount, nbRuns, bridgeType);
 
         // Show summary and get confirmation
         const confirmed = await confirmConfiguration(rl, config);
@@ -450,8 +450,9 @@ function fxMs(ms?: number | null): string {
 export function displayMetrics(metrics: MetricsSummary): void {
     console.log(chalk.bold("\nConfiguration:"));
     console.log(`  Tag:              ${chalk.white(metrics.tag)}`);
+    console.log(`  Bridge:           ${chalk.cyan(metrics.bridgeName)}`);
     console.log(`  Direction:        ${chalk.white(metrics.direction)}`);
-    console.log(`  Amount (XRP):     ${chalk.white(String(metrics.xrpAmount))}`);
+    console.log(`  Amount (${metrics.currency}):     ${chalk.white(String(metrics.xrpAmount))}`);
     console.log(`  Runs requested:   ${chalk.white(String(metrics.runsPlanned))}`);
 
     console.log(`\n${chalk.bold('Execution:')}`);
@@ -475,9 +476,9 @@ export function displayMetrics(metrics: MetricsSummary): void {
     } else {
         console.log(chalk.red("\n⚠️  No successful runs to analyze."));
     }
-    if (metrics.costs.meanTotalXrp && metrics.costs.meanBridgeXrp) {
+    if (metrics.costs.meanTotal && metrics.costs.meanBridge) {
         console.log(`\n${chalk.bold('Costs average:')}`);
-        console.log(`  Total Cost:    ${chalk.yellow(metrics.costs.meanTotalXrp.toFixed(6) + ' XRP')}`);
-        console.log(`  Bridge Cost:   ${chalk.yellow(metrics.costs.meanBridgeXrp.toFixed(6) + ' XRP')}`);
+        console.log(`  Total Cost:    ${chalk.yellow(metrics.costs.meanTotal.toFixed(6) + ' ' + metrics.currency)}`);
+        console.log(`  Bridge Cost:   ${chalk.yellow(metrics.costs.meanBridge.toFixed(6) + ' ' + metrics.currency)}`);
     }
 }

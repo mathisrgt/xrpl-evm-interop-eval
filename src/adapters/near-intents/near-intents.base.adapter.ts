@@ -61,7 +61,35 @@ export const baseAdapter: ChainAdapter = {
             quoteWaitingTimeMs: 3000,
         };
 
-        const quote = await OneClickService.getQuote(quoteRequest);
+        // Retry logic for getting quote (max 3 attempts)
+        let quote;
+        let lastError;
+        const maxRetries = 3;
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                console.log(`\n🔄 Quote attempt ${attempt}/${maxRetries}...`);
+                quote = await OneClickService.getQuote(quoteRequest);
+                console.log(`✅ Quote obtained successfully`);
+                break; // Success, exit retry loop
+            } catch (error: any) {
+                lastError = error;
+                console.log(`❌ Quote attempt ${attempt}/${maxRetries} failed: ${error.message || error}`);
+
+                if (attempt < maxRetries) {
+                    const waitTime = attempt * 2000; // Exponential backoff: 2s, 4s
+                    console.log(`⏳ Waiting ${waitTime/1000}s before retry...`);
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                } else {
+                    console.log(`❌ All ${maxRetries} quote attempts failed`);
+                    throw new Error(`Failed to get Near Intents quote after ${maxRetries} attempts: ${error.message || error}`);
+                }
+            }
+        }
+
+        if (!quote) {
+            throw new Error(`Failed to get Near Intents quote: ${lastError?.message || 'Unknown error'}`);
+        }
 
         if (!quote.quote?.depositAddress) {
             throw new Error("No deposit address in quote");
@@ -105,7 +133,8 @@ export const baseAdapter: ChainAdapter = {
         const gasFeeWei = gasUsed * effectiveGasPrice;
         const txFee = Number(formatEther(gasFeeWei));
 
-        return { xrpAmount: ctx.cfg.xrpAmount, txHash, submittedAt, txFee };
+        // For near-intents, xrpAmount represents USD value (USDC amount / 1)
+        return { xrpAmount: ctx.cfg.xrpAmount, txHash, submittedAt, txFee, currency: 'USD' };
     },
 
     async observe(ctx: RunContext): Promise<TargetOutput> {
@@ -151,74 +180,113 @@ export const baseAdapter: ChainAdapter = {
             }, timeoutMs);
             ctx.cleaner.trackTimer(timeoutId);
 
-            // Function to check for transfers in a given block range
+            // Track consecutive errors for exponential backoff
+            let consecutiveErrors = 0;
+            const maxConsecutiveErrors = 10; // Don't give up, but slow down if many errors
+
+            // Function to check for transfers in a given block range with retry logic
             const checkForTransfers = async (toBlock: bigint) => {
-                const logs = await publicClient.getLogs({
-                    address: USDC_BASE_ADDRESS,
-                    event: {
-                        type: "event",
-                        name: "Transfer",
-                        inputs: [
-                            { indexed: true, name: "from", type: "address" },
-                            { indexed: true, name: "to", type: "address" },
-                            { indexed: false, name: "value", type: "uint256" },
-                        ],
-                    },
-                    fromBlock: startBlock,
-                    toBlock: toBlock,
-                    args: { to: account.address },
-                });
+                const maxRetries = 3;
+                let lastError;
 
-                if (logs.length > 0) {
-                    console.log(`   Found ${logs.length} transfer(s) to account`);
-                }
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                    try {
+                        const logs = await publicClient.getLogs({
+                            address: USDC_BASE_ADDRESS,
+                            event: {
+                                type: "event",
+                                name: "Transfer",
+                                inputs: [
+                                    { indexed: true, name: "from", type: "address" },
+                                    { indexed: true, name: "to", type: "address" },
+                                    { indexed: false, name: "value", type: "uint256" },
+                                ],
+                            },
+                            fromBlock: startBlock,
+                            toBlock: toBlock,
+                            args: { to: account.address },
+                        });
 
-                // Filter out the outgoing transfer to deposit address
-                const incomingLogs = logs.filter((log) => {
-                    const from = (log as any).args?.from as string | undefined;
-                    const fromLower = from?.toLowerCase();
-                    const depositLower = depositAddress?.toLowerCase();
+                        // Success - reset error counter
+                        consecutiveErrors = 0;
 
-                    // Exclude transfers FROM the deposit address (our outgoing transfer)
-                    if (depositLower && fromLower === depositLower) {
-                        console.log(`   Skipping outgoing transfer to deposit address in tx ${log.transactionHash}`);
-                        return false;
+                        if (logs.length > 0) {
+                            console.log(`   Found ${logs.length} transfer(s) to account`);
+                        }
+
+                        // Filter out the outgoing transfer to deposit address
+                        const incomingLogs = logs.filter((log) => {
+                            const from = (log as any).args?.from as string | undefined;
+                            const fromLower = from?.toLowerCase();
+                            const depositLower = depositAddress?.toLowerCase();
+
+                            // Exclude transfers FROM the deposit address (our outgoing transfer)
+                            if (depositLower && fromLower === depositLower) {
+                                console.log(`   Skipping outgoing transfer to deposit address in tx ${log.transactionHash}`);
+                                return false;
+                            }
+
+                            // Exclude transfers FROM our own account (self-transfers)
+                            if (fromLower === account.address.toLowerCase()) {
+                                console.log(`   Skipping self-transfer in tx ${log.transactionHash}`);
+                                return false;
+                            }
+
+                            return true;
+                        });
+
+                        // Take the first incoming transfer (not the last)
+                        const log = incomingLogs.length > 0 ? incomingLogs[0] : undefined;
+
+                        if (log) {
+                            const from = (log as any).args?.from as string;
+                            const value = (log as any).args?.value as bigint | undefined;
+                            const targetAmount = value ? Number(formatUnits(value, 6)) : 0;
+
+                            console.log(`✅ Found incoming USDC transfer!`);
+                            console.log(`   From: ${from}`);
+                            console.log(`   Amount: ${targetAmount} USDC`);
+                            console.log(`   Tx: ${log.transactionHash}`);
+
+                            const receipt = await publicClient.getTransactionReceipt({ hash: log.transactionHash as Address });
+                            const gasUsed = receipt.gasUsed;
+                            const effectiveGasPrice = receipt.effectiveGasPrice || 0n;
+                            const gasFeeWei = gasUsed * effectiveGasPrice;
+                            const txFee = Number(formatEther(gasFeeWei));
+
+                            resolveOnce({
+                                xrpAmount: targetAmount,
+                                txHash: log.transactionHash as Address,
+                                finalizedAt: Date.now(),
+                                txFee,
+                                currency: 'USD',
+                            });
+                        }
+
+                        return; // Success, exit retry loop
+                    } catch (err: any) {
+                        lastError = err;
+                        consecutiveErrors++;
+
+                        const errorType = err?.name || 'Error';
+                        const statusCode = err?.status || err?.response?.status || 'unknown';
+                        const errorMsg = err?.details || err?.message || 'Unknown error';
+
+                        if (attempt < maxRetries) {
+                            const waitTime = attempt * 1000; // 1s, 2s
+                            console.warn(`⚠️  RPC error (attempt ${attempt}/${maxRetries}, status ${statusCode}): ${errorMsg.substring(0, 100)}`);
+                            console.warn(`   Retrying in ${waitTime/1000}s...`);
+                            await new Promise(resolve => setTimeout(resolve, waitTime));
+                        } else {
+                            // Log error but don't reject - just warn and continue watching
+                            console.warn(`⚠️  RPC error after ${maxRetries} attempts (status ${statusCode})`);
+                            console.warn(`   ${errorType}: ${errorMsg.substring(0, 200)}`);
+
+                            if (consecutiveErrors >= maxConsecutiveErrors) {
+                                console.warn(`   ⚠️  ${consecutiveErrors} consecutive errors - Base RPC may be experiencing issues`);
+                            }
+                        }
                     }
-
-                    // Exclude transfers FROM our own account (self-transfers)
-                    if (fromLower === account.address.toLowerCase()) {
-                        console.log(`   Skipping self-transfer in tx ${log.transactionHash}`);
-                        return false;
-                    }
-
-                    return true;
-                });
-
-                // Take the first incoming transfer (not the last)
-                const log = incomingLogs.length > 0 ? incomingLogs[0] : undefined;
-
-                if (log) {
-                    const from = (log as any).args?.from as string;
-                    const value = (log as any).args?.value as bigint | undefined;
-                    const targetAmount = value ? Number(formatUnits(value, 6)) : 0;
-
-                    console.log(`✅ Found incoming USDC transfer!`);
-                    console.log(`   From: ${from}`);
-                    console.log(`   Amount: ${targetAmount} USDC`);
-                    console.log(`   Tx: ${log.transactionHash}`);
-
-                    const receipt = await publicClient.getTransactionReceipt({ hash: log.transactionHash as Address });
-                    const gasUsed = receipt.gasUsed;
-                    const effectiveGasPrice = receipt.effectiveGasPrice || 0n;
-                    const gasFeeWei = gasUsed * effectiveGasPrice;
-                    const txFee = Number(formatEther(gasFeeWei));
-
-                    resolveOnce({
-                        xrpAmount: targetAmount,
-                        txHash: log.transactionHash as Address,
-                        finalizedAt: Date.now(),
-                        txFee,
-                    });
                 }
             };
 
@@ -227,20 +295,22 @@ export const baseAdapter: ChainAdapter = {
                 try {
                     const currentBlock = await publicClient.getBlockNumber();
                     await checkForTransfers(currentBlock);
-                } catch (err) {
-                    console.warn("Error in initial transfer check:", err);
+                } catch (err: any) {
+                    const errorMsg = err?.details || err?.message || 'Unknown error';
+                    console.warn(`⚠️  Initial transfer check failed: ${errorMsg.substring(0, 100)}`);
                 }
             })();
 
             // Then watch for new blocks
             unwatch = publicClient.watchBlockNumber({
-                onError: (e) => rejectOnce(e),
+                onError: (e: any) => {
+                    const errorMsg = e?.details || e?.message || 'Unknown error';
+                    console.warn(`⚠️  Block watcher error: ${errorMsg.substring(0, 100)}`);
+                    // Don't reject immediately - RPC issues are often temporary
+                },
                 onBlockNumber: async (bn) => {
-                    try {
-                        await checkForTransfers(bn);
-                    } catch (err) {
-                        console.warn("Error watching base logs:", err);
-                    }
+                    // checkForTransfers handles its own errors with retry logic
+                    await checkForTransfers(bn);
                 },
             });
 

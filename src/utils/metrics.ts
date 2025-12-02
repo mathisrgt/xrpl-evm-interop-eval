@@ -14,22 +14,24 @@ export interface LatencyStats {
 
 export interface CostsStats {
   n: number;
-  meanTotalXrp: number | null;
-  minTotalXrp: number | null;
-  maxTotalXrp: number | null;
-  stdDevTotalXrp: number | null;
+  meanTotal: number | null;
+  minTotal: number | null;
+  maxTotal: number | null;
+  stdDevTotal: number | null;
 
-  meanBridgeXrp: number | null;
-  meanSourceFeeXrp: number | null;
-  meanTargetFeeXrp: number | null;
+  meanBridge: number | null;
+  meanSourceFee: number | null;
+  meanTargetFee: number | null;
 }
 
 export interface MetricsSummary {
   timestampIso: string;
   tag: string;
+  bridgeName: string;
 
   direction: string;
   xrpAmount: number;
+  currency: string;
   runsPlanned: number;
 
   totalRuns: number;
@@ -146,14 +148,14 @@ export function computeMetrics(cfg: RunConfig, records: RunRecord[], batchDurati
 
   const costStats: CostsStats = {
     n: totals.length,
-    meanTotalXrp: mean(totals),
-    minTotalXrp: totals.length ? totalsSorted[0] : null,
-    maxTotalXrp: totals.length ? totalsSorted[totalsSorted.length - 1] : null,
-    stdDevTotalXrp: stddev(totals),
+    meanTotal: mean(totals),
+    minTotal: totals.length ? totalsSorted[0] : null,
+    maxTotal: totals.length ? totalsSorted[totalsSorted.length - 1] : null,
+    stdDevTotal: stddev(totals),
 
-    meanBridgeXrp: mean(bridgeArr),
-    meanSourceFeeXrp: mean(sourceArr),
-    meanTargetFeeXrp: mean(targetArr),
+    meanBridge: mean(bridgeArr),
+    meanSourceFee: mean(sourceArr),
+    meanTargetFee: mean(targetArr),
   };
 
   const totalRuns = records.length;
@@ -161,11 +163,16 @@ export function computeMetrics(cfg: RunConfig, records: RunRecord[], batchDurati
   const failureCount = totalRuns - successCount;
   const successRate = totalRuns ? successCount / totalRuns : 0;
 
+  // Determine currency based on bridge name
+  const currency = cfg.bridgeName === 'near-intents' ? 'USD' : 'XRP';
+
   const summary: MetricsSummary = {
     timestampIso: new Date().toISOString(),
     tag: cfg.tag,
+    bridgeName: cfg.bridgeName,
     direction: cfg.direction,
     xrpAmount: cfg.xrpAmount,
+    currency,
     runsPlanned: cfg.runs,
     totalRuns,
     successCount,

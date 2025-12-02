@@ -104,15 +104,15 @@ async function main() {
             }
         }
 
-        // if (records.length > 0) {
-        //     logStep("Metrics");
-        //     const metricsReport = computeMetrics(cfg, records, (Date.now() - batchStartTime));
-        //     displayMetrics(metricsReport.summary);
+        if (records.length > 0) {
+            logStep("Metrics");
+            const metricsReport = computeMetrics(cfg, records, (Date.now() - batchStartTime));
+            displayMetrics(metricsReport.summary);
 
-        //     console.log(chalk.bold('\n💾 Saving batch records...'));
-        //     saveBatchArtifacts(batchId, cfg, ctx, records, metricsReport);
-        //     console.log(chalk.green(`✅ Batch saved: ${batchId}`));
-        // }
+            console.log(chalk.bold('\n💾 Saving batch records...'));
+            saveBatchArtifacts(batchId, cfg, ctx, records, metricsReport);
+            console.log(chalk.green(`✅ Batch saved: ${batchId}`));
+        }
     } catch (err) {
         logError("Fatal error during batch execution", "BATCH_ERROR", err instanceof Error ? err : undefined);
         console.error(err);

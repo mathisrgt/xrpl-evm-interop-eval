@@ -8,18 +8,20 @@ export type NetworkDirection = "xrpl_to_base" | "base_to_xrpl" | "xrpl_to_xrpl_e
 
 /** Output from the source chain after submitting a transfer. */
 export interface SourceOutput {
-    xrpAmount: number;
+    xrpAmount: number; // Amount in the native currency (XRP for axelar, USD for near-intents)
     txHash: string;
     submittedAt: number;
     txFee: number;
+    currency?: 'XRP' | 'USD'; // Currency type for proper display
 }
 
 /** Output from the target chain after a transfer is finalized. */
 export interface TargetOutput {
-    xrpAmount: number;
+    xrpAmount: number; // Amount in the native currency (XRP for axelar, USD for near-intents)
     txHash: string;
     finalizedAt: number;
     txFee: number;
+    currency?: 'XRP' | 'USD'; // Currency type for proper display
 }
 
 /** Output when a gas refund is received. */
@@ -70,6 +72,7 @@ export interface RunConfig {
     xrpAmount: number;
     direction: NetworkDirection;
     networks: NetworkConfig;
+    bridgeName: string;
 }
 
 /** Fees normalized (null if not computed). */

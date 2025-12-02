@@ -1,0 +1,39 @@
+{
+  "summary": {
+    "timestampIso": "2025-12-02T10:51:37.461Z",
+    "tag": "mainnet_xrpl_to_base_aggregated",
+    "bridgeName": "near-intents",
+    "direction": "xrpl_to_base",
+    "xrpAmount": 4,
+    "currency": "USD",
+    "runsPlanned": 3,
+    "totalRuns": 3,
+    "successCount": 2,
+    "failureCount": 1,
+    "successRate": 0.6666666666666666,
+    "latency": {
+      "n": 0,
+      "minMs": null,
+      "p50Ms": null,
+      "p90Ms": null,
+      "p95Ms": null,
+      "p99Ms": null,
+      "maxMs": null,
+      "meanMs": null,
+      "stdDevMs": null
+    },
+    "costs": {
+      "n": 0,
+      "meanTotal": null,
+      "minTotal": null,
+      "maxTotal": null,
+      "stdDevTotal": null,
+      "meanBridge": null,
+      "meanSourceFee": null,
+      "meanTargetFee": null
+    },
+    "batchDurationMs": 441879
+  },
+  "batchCount": 1,
+  "lastUpdated": "2025-12-02T10:51:37.461Z"
+}

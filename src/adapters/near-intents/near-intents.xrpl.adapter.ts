@@ -49,7 +49,35 @@ export const xrplAdapter: ChainAdapter = {
             quoteWaitingTimeMs: 3000,
         };
 
-        const quote = await OneClickService.getQuote(quoteRequest);
+        // Retry logic for getting quote (max 3 attempts)
+        let quote;
+        let lastError;
+        const maxRetries = 3;
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                console.log(`\n🔄 Quote attempt ${attempt}/${maxRetries}...`);
+                quote = await OneClickService.getQuote(quoteRequest);
+                console.log(`✅ Quote obtained successfully`);
+                break; // Success, exit retry loop
+            } catch (error: any) {
+                lastError = error;
+                console.log(`❌ Quote attempt ${attempt}/${maxRetries} failed: ${error.message || error}`);
+
+                if (attempt < maxRetries) {
+                    const waitTime = attempt * 2000; // Exponential backoff: 2s, 4s
+                    console.log(`⏳ Waiting ${waitTime/1000}s before retry...`);
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                } else {
+                    console.log(`❌ All ${maxRetries} quote attempts failed`);
+                    throw new Error(`Failed to get Near Intents quote after ${maxRetries} attempts: ${error.message || error}`);
+                }
+            }
+        }
+
+        if (!quote) {
+            throw new Error(`Failed to get Near Intents quote: ${lastError?.message || 'Unknown error'}`);
+        }
 
         if (!quote.quote?.depositAddress) {
             throw new Error("No deposit address in quote");
@@ -89,7 +117,9 @@ export const xrplAdapter: ChainAdapter = {
         const txHash = res.result.hash!;
         const txFee = Number(dropsToXrp(res.result.tx_json.Fee || "0"));
 
-        return { xrpAmount: ctx.cfg.xrpAmount, txHash, submittedAt, txFee };
+        // For near-intents XRPL→Base, we send XRP but track the USD value
+        // The xrpAmount field represents the expected USD value on the destination
+        return { xrpAmount: ctx.cfg.xrpAmount, txHash, submittedAt, txFee, currency: 'USD' };
     },
 
     async observe(ctx: RunContext): Promise<TargetOutput> {
@@ -149,11 +179,14 @@ export const xrplAdapter: ChainAdapter = {
                     console.log(`   Amount: ${deliveredXrp} XRP`);
                     console.log(`   Tx: ${data.hash}`);
 
+                    // For near-intents Base→XRPL, we receive XRP
+                    // But we track as USD for consistency in metrics
                     resolveOnce({
                         xrpAmount: deliveredXrp,
                         txHash: data.hash,
                         finalizedAt,
                         txFee: txFeeXrp,
+                        currency: 'USD',
                     } as TargetOutput);
                 } catch (err) {
                     rejectOnce(err);
