@@ -1,0 +1,39 @@
+{
+  "summary": {
+    "timestampIso": "2025-12-02T13:33:49.200Z",
+    "tag": "mainnet_xrpl_evm_to_xrpl_aggregated",
+    "bridgeName": "axelar",
+    "direction": "xrpl_evm_to_xrpl",
+    "xrpAmount": 4,
+    "currency": "XRP",
+    "runsPlanned": 3,
+    "totalRuns": 3,
+    "successCount": 3,
+    "failureCount": 0,
+    "successRate": 1,
+    "latency": {
+      "n": 0,
+      "minMs": null,
+      "p50Ms": null,
+      "p90Ms": null,
+      "p95Ms": null,
+      "p99Ms": null,
+      "maxMs": null,
+      "meanMs": null,
+      "stdDevMs": null
+    },
+    "costs": {
+      "n": 0,
+      "meanTotal": null,
+      "minTotal": null,
+      "maxTotal": null,
+      "stdDevTotal": null,
+      "meanBridge": null,
+      "meanSourceFee": null,
+      "meanTargetFee": null
+    },
+    "batchDurationMs": 186415
+  },
+  "batchCount": 1,
+  "lastUpdated": "2025-12-02T13:33:49.201Z"
+}
