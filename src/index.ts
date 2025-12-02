@@ -6,9 +6,42 @@ import { displayMetrics, logConfig, logError, logObserve, logPrepare, logRecord,
 import { waitWithCountdown } from "./utils/time";
 import { computeMetrics } from "./utils/metrics";
 import { createRunner, BridgeType } from "./runners/runner.factory";
+import { getXrplWallet, getEvmAccount } from "./utils/environment";
+import * as readline from 'readline';
 
 async function main() {
     const { config: cfg, bridgeType } = await showMenu();
+
+    // Display wallet addresses and get confirmation
+    console.log(chalk.bold('\n📍 Wallet Addresses'));
+    console.log(chalk.cyan('═'.repeat(60)));
+
+    const xrplWallet = getXrplWallet();
+    const evmAccount = getEvmAccount();
+
+    console.log(chalk.bold('XRPL Address: ') + chalk.green(xrplWallet.address));
+    console.log(chalk.bold('EVM Address:  ') + chalk.green(evmAccount.address));
+    console.log(chalk.cyan('═'.repeat(60)));
+
+    // Prompt for confirmation
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+    });
+
+    const answer = await new Promise<string>((resolve) => {
+        rl.question(chalk.yellow('\nContinue with these addresses? (Y/n): '), (ans) => {
+            rl.close();
+            resolve(ans.trim().toLowerCase());
+        });
+    });
+
+    if (answer === 'n' || answer === 'no') {
+        console.log(chalk.red('❌ Aborted by user'));
+        process.exit(0);
+    }
+
+    console.log(chalk.green('✅ Proceeding with bridge operations...\n'));
 
     logStep("configuration");
     logConfig(cfg);

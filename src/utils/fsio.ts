@@ -127,6 +127,8 @@ export function summaryToCsvRow(
     timestampIso: s.timestampIso,
     mode: cfg.networks.mode,
     tag: s.tag,
+    bridgeName: s.bridgeName,
+    currency: s.currency,
     direction: s.direction,
     amountXrp: s.xrpAmount,
     runsPlanned: s.runsPlanned,
@@ -167,8 +169,10 @@ export const SUMMARY_CSV_HEADERS: string[] = [
   "timestampIso",
   "mode",
   "tag",
+  "bridgeName",
+  "currency",
   "direction",
-  "amountXrp",
+  "amountXrp",  // Note: represents amount in currency specified by 'currency' field
   "runsPlanned",
 
   "totalRuns",
@@ -251,26 +255,25 @@ export function computeDirectionSummary(direction: NetworkDirection, mode: Netwo
   const allSourceFees: number[] = [];
   const allTargetFees: number[] = [];
 
-  for (const summary of allSummaries) {
-    const batchFolder = batchFolders.find(f => summary.tag.includes(f.split('_')[0]));
-    if (batchFolder) {
-      const jsonlFile = path.join(directionFolder, batchFolder, `${batchFolder}.jsonl`);
-      if (fs.existsSync(jsonlFile)) {
-        const lines = fs.readFileSync(jsonlFile, 'utf-8').split('\n').filter(l => l.trim());
-        for (const line of lines) {
-          try {
-            const record: RunRecord = JSON.parse(line);
-            if (record.success && record.timestamps.t1_submit && record.timestamps.t3_finalized) {
-              allLatencies.push(record.timestamps.t3_finalized - record.timestamps.t1_submit);
-              
-              if (record.costs.totalCost) allCosts.push(record.costs.totalCost);
-              if (record.costs.bridgeFee) allBridgeCosts.push(record.costs.bridgeFee);
-              if (record.costs.sourceFee) allSourceFees.push(record.costs.sourceFee);
-              if (record.costs.targetFee) allTargetFees.push(record.costs.targetFee);
-            }
-          } catch (err) {
-            // Skip malformed lines
+  // Read JSONL files directly from batch folders instead of trying to match by tag
+  for (const batchFolder of batchFolders) {
+    const jsonlFile = path.join(directionFolder, batchFolder, `${batchFolder}.jsonl`);
+    if (fs.existsSync(jsonlFile)) {
+      const lines = fs.readFileSync(jsonlFile, 'utf-8').split('\n').filter(l => l.trim());
+      for (const line of lines) {
+        try {
+          const record: RunRecord = JSON.parse(line);
+          if (record.success && record.timestamps.t1_submit && record.timestamps.t3_finalized) {
+            allLatencies.push(record.timestamps.t3_finalized - record.timestamps.t1_submit);
+
+            if (record.costs.totalCost) allCosts.push(record.costs.totalCost);
+            if (record.costs.bridgeFee) allBridgeCosts.push(record.costs.bridgeFee);
+            if (record.costs.sourceFee) allSourceFees.push(record.costs.sourceFee);
+            if (record.costs.targetFee) allTargetFees.push(record.costs.targetFee);
           }
+        } catch (err) {
+          // Skip malformed lines
+          console.warn(`Skipping malformed JSONL line in ${jsonlFile}`);
         }
       }
     }

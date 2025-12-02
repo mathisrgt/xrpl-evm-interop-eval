@@ -1,5 +1,4 @@
 import { Address, createPublicClient, createWalletClient, encodeFunctionData, erc20Abi, formatEther, http, parseEther, parseUnits } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
 import { xrplevmTestnet } from "viem/chains";
 import { ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../../types";
 import { xrplevm } from "../../utils/chains";
@@ -12,7 +11,7 @@ import {
     NATIVE_TOKEN_ADDRESS,
     XRP_TOKEN_ID
 } from "../../utils/constants";
-import { EVM_WALLET_PRIVATE_KEY, SQUID_INTEGRATOR_ID } from "../../utils/environment";
+import { getEvmAccount, SQUID_INTEGRATOR_ID } from "../../utils/environment";
 import { waitWithCountdown } from "../../utils/time";
 import axios from "axios";
 import chalk from "chalk";
@@ -48,7 +47,7 @@ export const evmAdapter: ChainAdapter = {
             transport: http(rpcUrl)
         });
 
-        const account = privateKeyToAccount(`0x${EVM_WALLET_PRIVATE_KEY}`);
+        const account = getEvmAccount();
 
         ctx.cache.evm = { publicClient, walletClient, account, chain };
 

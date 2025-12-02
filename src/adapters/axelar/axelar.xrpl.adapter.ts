@@ -2,7 +2,7 @@ import { Client, Payment, Wallet, convertStringToHex, dropsToXrp, xrpToDrops } f
 import type { ChainAdapter, RunContext, SourceOutput, TargetOutput, GasRefundOutput } from "../../types";
 import chalk from "chalk";
 import axios from "axios";
-import { SQUID_INTEGRATOR_ID } from "../../utils/environment";
+import { SQUID_INTEGRATOR_ID, getXrplWallet } from "../../utils/environment";
 
 // Helper to get token address format
 function getTokenAddress(chainId: string, tokenAddress: string): string {
@@ -25,7 +25,7 @@ export const xrplAdapter: ChainAdapter = {
         const client = new Client(ctx.cfg.networks.xrpl.wsUrl);
         await client.connect();
 
-        const wallet = Wallet.fromSeed(ctx.cfg.networks.xrpl.walletSeed);
+        const wallet = getXrplWallet();
         ctx.cache.xrpl = { client, wallet };
         ctx.cleaner.trackXrpl(client, wallet.address);
 

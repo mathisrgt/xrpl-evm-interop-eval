@@ -47,10 +47,9 @@ export class Runner {
      */
     private async prepareEvmOnly(ctx: RunContext): Promise<void> {
         const { createPublicClient, createWalletClient, http } = await import("viem");
-        const { privateKeyToAccount } = await import("viem/accounts");
         const { xrplevmTestnet } = await import("viem/chains");
         const { xrplevm } = await import("../utils/chains");
-        const { EVM_WALLET_PRIVATE_KEY } = await import("../utils/environment");
+        const { getEvmAccount } = await import("../utils/environment");
 
         const rpcUrl = ctx.cfg.networks.evm.rpcUrl;
         const chain = ctx.cfg.networks.mode === "mainnet" ? xrplevm : xrplevmTestnet;
@@ -65,7 +64,7 @@ export class Runner {
             transport: http(rpcUrl)
         });
 
-        const account = privateKeyToAccount(`0x${EVM_WALLET_PRIVATE_KEY}`);
+        const account = getEvmAccount();
 
         ctx.cache.evm = { publicClient, walletClient, account, chain };
     }
@@ -74,12 +73,13 @@ export class Runner {
      * Prepare XRPL adapter without Squid route (just wallet setup)
      */
     private async prepareXrplOnly(ctx: RunContext): Promise<void> {
-        const { Client, Wallet } = await import("xrpl");
+        const { Client } = await import("xrpl");
+        const { getXrplWallet } = await import("../utils/environment");
 
         const client = new Client(ctx.cfg.networks.xrpl.wsUrl);
         await client.connect();
 
-        const wallet = Wallet.fromSeed(ctx.cfg.networks.xrpl.walletSeed);
+        const wallet = getXrplWallet();
         ctx.cache.xrpl = { client, wallet };
         ctx.cleaner.trackXrpl(client, wallet.address);
     }

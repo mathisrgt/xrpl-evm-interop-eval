@@ -1,7 +1,7 @@
 import { Client, Payment, Wallet, dropsToXrp, xrpToDrops } from "xrpl";
 import type { ChainAdapter, RunContext, SourceOutput, TargetOutput, GasRefundOutput } from "../../types";
 import { OneClickService, OpenAPI, QuoteRequest } from "@defuse-protocol/one-click-sdk-typescript";
-import { ONE_CLICK_JWT } from "../../utils/environment";
+import { ONE_CLICK_JWT, getXrplWallet } from "../../utils/environment";
 import { NEAR_INTENTS_TOKEN_IDS } from "../../utils/constants";
 
 export const xrplAdapter: ChainAdapter = {
@@ -10,7 +10,7 @@ export const xrplAdapter: ChainAdapter = {
         const client = new Client(ctx.cfg.networks.xrpl.wsUrl);
         await client.connect();
 
-        const wallet = Wallet.fromSeed(ctx.cfg.networks.xrpl.walletSeed);
+        const wallet = getXrplWallet();
         ctx.cache.xrpl = { client, wallet };
         ctx.cleaner.trackXrpl(client, wallet.address);
     },

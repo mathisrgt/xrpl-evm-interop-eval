@@ -1,0 +1,55 @@
+{
+  "summary": {
+    "timestampIso": "2025-12-02T13:37:08.186Z",
+    "tag": "mainnet_base_to_xrpl_1764682564949",
+    "bridgeName": "near-intents",
+    "direction": "base_to_xrpl",
+    "xrpAmount": 4,
+    "currency": "USD",
+    "runsPlanned": 3,
+    "totalRuns": 3,
+    "successCount": 2,
+    "failureCount": 1,
+    "successRate": 0.6666666666666666,
+    "latency": {
+      "n": 2,
+      "minMs": 14077,
+      "p50Ms": 23701.5,
+      "p90Ms": 31401.100000000002,
+      "p95Ms": 32363.55,
+      "p99Ms": 33133.509999999995,
+      "maxMs": 33326,
+      "meanMs": 23701.5,
+      "stdDevMs": 9624.5
+    },
+    "costs": {
+      "n": 2,
+      "meanTotal": 4.000000094961866,
+      "minTotal": 4.000000094851687,
+      "maxTotal": 4.000000095072045,
+      "stdDevTotal": 1.1017897705390536e-10,
+      "meanBridge": 2.0438609999999997,
+      "meanSourceFee": 9.49618663705e-8,
+      "meanTargetFee": 0.000010500000000000001
+    },
+    "batchDurationMs": 61590
+  },
+  "latenciesMs": [
+    33326,
+    14077
+  ],
+  "failureReasons": {
+    "The contract function \"transfer\" reverted with the following reason:\nERC20: transfer amount exceeds balance\n\nContract Call:\n  address:   0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\n  function:  transfer(address recipient, uint256 amount)\n  args:              (0x35ddAc9E22D5dc3D0a23e99b3e533a5C7cF854F1, 8000000)\n  sender:    0x1BfB0aeDFE575551BF95ed10b52DCCB0bb5313DB\n\nDocs: https://viem.sh/docs/contract/writeContract\nVersion: viem@2.38.5": 1
+  },
+  "cfgEcho": {
+    "tag": "mainnet_base_to_xrpl_1764682564949",
+    "mode": "mainnet",
+    "direction": "base_to_xrpl",
+    "xrpAmount": 4,
+    "runs": 3,
+    "xrplUrl": "wss://xrplcluster.com/",
+    "evmUrl": "https://rpc.xrplevm.org",
+    "xrplAddress": "rhbSkyrQER1JsLB1NVkyQf6Rqrxw7kyKdc",
+    "evmAddress": "0x1BfB0aeDFE575551BF95ed10b52DCCB0bb5313DB"
+  }
+}

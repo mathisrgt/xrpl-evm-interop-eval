@@ -1,11 +1,9 @@
 import { Address, createPublicClient, createWalletClient, erc20Abi, formatEther, formatUnits, http, parseUnits } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
 import { ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../../types";
 import { base } from "../../utils/chains";
 import { NEAR_INTENTS_TOKEN_IDS, USDC_BASE_ADDRESS } from "../../utils/constants";
-import { EVM_WALLET_PRIVATE_KEY } from "../../utils/environment";
+import { getEvmAccount, ONE_CLICK_JWT } from "../../utils/environment";
 import { OneClickService, OpenAPI, QuoteRequest } from "@defuse-protocol/one-click-sdk-typescript";
-import { ONE_CLICK_JWT } from "../../utils/environment";
 
 export const baseAdapter: ChainAdapter = {
 
@@ -21,7 +19,7 @@ export const baseAdapter: ChainAdapter = {
             transport: http()
         });
 
-        const account = privateKeyToAccount(`0x${EVM_WALLET_PRIVATE_KEY}`);
+        const account = getEvmAccount();
         ctx.cache.evm = { publicClient, walletClient, account, chain: base };
     },
 
