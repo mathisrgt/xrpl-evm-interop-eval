@@ -25,11 +25,6 @@ function formatAmount(amount: number | string, unit: string = 'XRP'): string {
     return `${chalk.yellow(formatted)} ${chalk.dim(unit)}`;
 }
 
-function formatTxHash(hash: string): string {
-    const truncated = `${hash.slice(0, 8)}...${hash.slice(-8)}`;
-    return chalk.magenta(truncated);
-}
-
 function getSourceChain(direction: NetworkDirection): 'xrpl' | 'evm' {
     if (direction === 'xrpl_to_xrpl_evm' || direction === 'xrpl_to_base') {
         return 'xrpl';
@@ -56,8 +51,6 @@ export function logStep(step: string): void {
 }
 
 export function logConfig(cfg: RunConfig): void {
-    // console.log(chalk.bgWhite('════════════ CONFIG ════════════'));
-
     const rows = [
         ['Tag', cfg.tag],
         ['Mode', chalk[cfg.networks.mode === 'mainnet' ? 'green' : 'yellow'](cfg.networks.mode.toUpperCase())],

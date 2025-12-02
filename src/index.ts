@@ -37,7 +37,7 @@ async function main() {
 
         for (let runIndex = 0; runIndex < cfg.runs; runIndex++) {
             const runNumber = runIndex + 1;
-            const separator = chalk.bold('═'.repeat(80));
+            const separator = chalk.bold('═'.repeat(60));
 
             console.log(`\n${separator}`);
             console.log(chalk.bold.cyan(`🔄 RUN ${runNumber}/${cfg.runs}`));
