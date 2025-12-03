@@ -6,6 +6,55 @@ import { loadConfig } from "../runners/config";
 import { MetricsSummary } from "./metrics";
 import { getDirectionFolders, recomputeDirectionMetrics, recomputeAllMetricsCsv } from "./fsio";
 
+/**
+ * Get explorer URL for a transaction hash or address
+ */
+function getExplorerUrl(value: string, type: 'tx' | 'address', chain: 'xrpl' | 'evm' | 'near-intents' | 'axelar', direction?: NetworkDirection): string {
+    // Determine which chain/bridge is being used
+    if (chain === 'near-intents') {
+        // Near Intents uses deposit addresses
+        if (type === 'address') {
+            return `https://explorer.near-intents.org/transactions/${value}`;
+        }
+        return `https://explorer.near-intents.org/transactions/${value}`;
+    } else if (chain === 'axelar') {
+        // Axelar uses axelarscan for GMP transactions
+        if (type === 'tx') {
+            return `https://axelarscan.io/gmp/${value}`;
+        }
+        return `https://axelarscan.io/gmp/${value}`;
+    } else if (chain === 'xrpl' || (direction && (direction.includes('xrpl') && !direction.includes('flare')))) {
+        // XRPL mainnet explorer
+        if (type === 'tx') {
+            return `https://livenet.xrpl.org/transactions/${value}`;
+        } else {
+            return `https://livenet.xrpl.org/accounts/${value}`;
+        }
+    } else if (direction && direction.includes('flare')) {
+        // Flare explorer
+        if (type === 'tx') {
+            return `https://flare-explorer.flare.network/tx/${value}`;
+        } else {
+            return `https://flare-explorer.flare.network/address/${value}`;
+        }
+    } else {
+        // Default EVM explorer (for XRPL EVM sidechain)
+        if (type === 'tx') {
+            return `https://explorer.xrplevm.org/tx/${value}`;
+        } else {
+            return `https://explorer.xrplevm.org/address/${value}`;
+        }
+    }
+}
+
+/**
+ * Format a clickable explorer link
+ */
+function formatExplorerLink(value: string, type: 'tx' | 'address', chain: 'xrpl' | 'evm' | 'near-intents' | 'axelar', direction?: NetworkDirection): string {
+    const url = getExplorerUrl(value, type, chain, direction);
+    return `${chalk.cyan(value)}\n   ${chalk.dim('Explorer:')} ${chalk.blue.underline(url)}`;
+}
+
 function formatAddress(address: string, chain: 'xrpl' | 'evm', showPrefix: boolean = false): string {
     if (chain === 'xrpl') {
         return chalk.cyan(address);
@@ -77,7 +126,7 @@ export function logPrepare(ctx: RunContext): void {
     const xrplEndpoint = ctx.cfg.networks.xrpl.wsUrl;
 
     console.log(`${xrplStatus} ${chalk.bold('XRPL')}`);
-    console.log(`Address: ${formatAddress(xrplAddress, 'xrpl')}`);
+    console.log(`Address: ${formatExplorerLink(xrplAddress, 'address', 'xrpl', ctx.cfg.direction)}`);
     console.log(`Endpoint: ${chalk.dim(xrplEndpoint)}\n`);
 
     const evmReady = !!(ctx.cache.evm?.publicClient && ctx.cache.evm?.walletClient && ctx.cache.evm?.account);
@@ -86,11 +135,11 @@ export function logPrepare(ctx: RunContext): void {
     const evmEndpoint = ctx.cfg.networks.evm.rpcUrl;
 
     console.log(`${evmStatus} ${chalk.bold('EVM')}`);
-    console.log(`Address: ${formatAddress(evmAddress, 'evm')}`);
+    console.log(`Address: ${formatExplorerLink(evmAddress, 'address', 'evm', ctx.cfg.direction)}`);
     console.log(`Endpoint: ${chalk.dim(evmEndpoint)}\n`);
 
-    console.log(`${chalk.dim('XRPL Gateway')}: ${formatAddress(ctx.cfg.networks.xrpl.gateway, 'xrpl')}`);
-    console.log(`${chalk.dim('EVM Gateway')}: ${formatAddress(ctx.cfg.networks.evm.gateway, 'evm', true)}`);
+    console.log(`${chalk.dim('XRPL Gateway')}: ${formatExplorerLink(ctx.cfg.networks.xrpl.gateway, 'address', 'xrpl', ctx.cfg.direction)}`);
+    console.log(`${chalk.dim('EVM Gateway')}: ${formatExplorerLink(ctx.cfg.networks.evm.gateway, 'address', 'evm', ctx.cfg.direction)}`);
 
     const allReady = xrplReady && evmReady;
     const overallStatus = allReady ? chalk.green('✅ All systems ready') : chalk.red('Some systems not ready\n');
@@ -102,20 +151,28 @@ export function logSubmit(ctx: RunContext, srcOutput: SourceOutput) {
     const chainName = chalk.bold(sourceChain.toUpperCase());
     const amount = formatAmount(srcOutput.xrpAmount, 'XRP');
 
+    // Determine the bridge type from the config
+    const bridgeType = ctx.cfg.bridgeName;
+    let explorerChain: 'xrpl' | 'evm' | 'near-intents' | 'axelar' = sourceChain;
+    if (bridgeType === 'near-intents') {
+        explorerChain = 'near-intents';
+    } else if (bridgeType === 'axelar') {
+        explorerChain = 'axelar';
+    }
+
     console.log(`📤 ${chainName} transaction submitted`);
     console.log(`Amount: ${amount}`);
-    console.log(`Hash: ${srcOutput.txHash}`);
+    console.log(`Hash: ${formatExplorerLink(srcOutput.txHash, 'tx', explorerChain, ctx.cfg.direction)}`);
 }
 
 export function logObserve(ctx: RunContext, output: TargetOutput): void {
     const targetChain = getTargetChain(ctx.cfg.direction);
     const chainName = chalk.bold(targetChain.toUpperCase());
     const amount = formatAmount(output.xrpAmount, 'XRP');
-    const hash = output.txHash;
 
     console.log(`\n✅ ${chainName} transfer received`);
     console.log(`Amount: ${amount}`);
-    console.log(`Hash: ${hash}`);
+    console.log(`Hash: ${formatExplorerLink(output.txHash, 'tx', targetChain, ctx.cfg.direction)}`);
 
     if (ctx.ts.t3_finalized && ctx.ts.t1_submit) {
         const elapsed = formatElapsedMs(ctx.ts.t3_finalized - ctx.ts.t1_submit, { pad: true });
@@ -157,6 +214,33 @@ export function logRecord(record: RunRecord): void {
         const totalLatency = timestamps.t3_finalized - timestamps.t1_submit;
         const formattedLatency = formatElapsedMs(totalLatency, { pad: true });
         console.log(`${chalk.bold('Total latency')}: ${chalk.green(formattedLatency)}`);
+    }
+
+    console.log('');
+
+    // Transaction hashes
+    const txs = record.txs;
+    const sourceChain = getSourceChain(record.cfg.direction);
+    const targetChain = getTargetChain(record.cfg.direction);
+    const bridgeType = record.cfg.bridgeName;
+
+    let explorerChain: 'xrpl' | 'evm' | 'near-intents' | 'axelar' = sourceChain;
+    if (bridgeType === 'near-intents') {
+        explorerChain = 'near-intents';
+    } else if (bridgeType === 'axelar') {
+        explorerChain = 'axelar';
+    }
+
+    if (txs.sourceTxHash && txs.sourceTxHash !== 'N/A') {
+        console.log(`${chalk.bold('Source Tx')}:`);
+        console.log(`   ${formatExplorerLink(txs.sourceTxHash, 'tx', explorerChain, record.cfg.direction)}`);
+    }
+    if (txs.targetTxHash && txs.targetTxHash !== 'N/A') {
+        console.log(`${chalk.bold('Target Tx')}:`);
+        console.log(`   ${formatExplorerLink(txs.targetTxHash, 'tx', targetChain, record.cfg.direction)}`);
+    }
+    if (txs.bridgeMessageId) {
+        console.log(`${chalk.bold('Bridge Message ID')}: ${chalk.cyan(txs.bridgeMessageId)}`);
     }
 
     console.log('');
