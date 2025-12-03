@@ -1,39 +1,39 @@
 {
   "summary": {
-    "timestampIso": "2025-12-03T15:29:18.651Z",
+    "timestampIso": "2025-12-03T15:37:03.686Z",
     "tag": "mainnet_fasset_xrpl_to_flare_aggregated",
     "bridgeName": "fasset",
     "direction": "xrpl_to_flare",
     "xrpAmount": 10,
     "currency": "XRP",
-    "runsPlanned": 2,
-    "totalRuns": 2,
-    "successCount": 2,
+    "runsPlanned": 3,
+    "totalRuns": 3,
+    "successCount": 3,
     "failureCount": 0,
     "successRate": 1,
     "latency": {
-      "n": 2,
+      "n": 3,
       "minMs": 124554,
-      "p50Ms": 258355,
-      "p90Ms": 365395.80000000005,
-      "p95Ms": 378775.9,
-      "p99Ms": 389479.98,
+      "p50Ms": 184826,
+      "p90Ms": 350690,
+      "p95Ms": 371423,
+      "p99Ms": 388009.4,
       "maxMs": 392156,
-      "meanMs": 258355,
-      "stdDevMs": 133801
+      "meanMs": 233845.33333333334,
+      "stdDevMs": 114614.94632415482
     },
     "costs": {
-      "n": 2,
-      "meanTotal": 0.016922550000676422,
+      "n": 3,
+      "meanTotal": 0.017743808334042606,
       "minTotal": 0.014712375000588016,
-      "maxTotal": 0.01913272500076483,
-      "stdDevTotal": 0.0022101750000884067,
+      "maxTotal": 0.019386325000774973,
+      "stdDevTotal": 0.002146045864900685,
       "meanBridge": null,
       "meanSourceFee": 0.000012,
-      "meanTargetFee": 0.01691055000067642
+      "meanTargetFee": 0.017731808334042604
     },
-    "batchDurationMs": 517096
+    "batchDurationMs": 702096
   },
-  "batchCount": 2,
-  "lastUpdated": "2025-12-03T15:29:18.653Z"
+  "batchCount": 3,
+  "lastUpdated": "2025-12-03T15:37:03.686Z"
 }
