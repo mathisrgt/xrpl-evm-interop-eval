@@ -395,3 +395,226 @@ export function saveBatchArtifacts(
 
   return paths;
 }
+
+/**
+ * Get all non-deprecated direction folders in a mode folder
+ */
+export function getDirectionFolders(mode: NetworkMode): Array<{ folder: string; bridgeName: string; direction: NetworkDirection }> {
+  const modeFolder = path.join("data", "results", mode);
+
+  if (!fs.existsSync(modeFolder)) {
+    return [];
+  }
+
+  const folders = fs.readdirSync(modeFolder, { withFileTypes: true })
+    .filter(dirent => dirent.isDirectory() && !dirent.name.includes('deprecated'))
+    .map(dirent => dirent.name);
+
+  const result: Array<{ folder: string; bridgeName: string; direction: NetworkDirection }> = [];
+
+  for (const folder of folders) {
+    // Parse folder name format: {bridgeName}_{direction}
+    const parts = folder.split('_');
+    if (parts.length >= 2) {
+      const bridgeName = parts[0];
+      const direction = parts.slice(1).join('_') as NetworkDirection;
+      result.push({ folder, bridgeName, direction });
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Recompute aggregated metrics for a specific direction folder
+ */
+export function recomputeDirectionMetrics(mode: NetworkMode, bridgeName: string, direction: NetworkDirection): MetricsSummary | null {
+  const directionSummary = computeDirectionSummary(direction, mode, bridgeName);
+
+  if (!directionSummary) {
+    return null;
+  }
+
+  const directionFolder = path.join("data", "results", mode, `${bridgeName}_${direction}`);
+  const directionSummaryFile = path.join(directionFolder, `${bridgeName}_${direction}_aggregated_metrics.json`);
+  const directionSummaryCsv = path.join(directionFolder, `${bridgeName}_${direction}_summary.csv`);
+
+  // Write JSON aggregated metrics
+  writeJsonAtomic(directionSummaryFile, {
+    summary: directionSummary,
+    batchCount: fs.readdirSync(directionFolder, { withFileTypes: true })
+      .filter(d => d.isDirectory()).length,
+    lastUpdated: new Date().toISOString(),
+  });
+
+  // Rebuild the direction summary CSV from all batch metrics
+  const batchFolders = fs.readdirSync(directionFolder, { withFileTypes: true })
+    .filter(dirent => dirent.isDirectory())
+    .map(dirent => dirent.name);
+
+  const csvRows: Array<Record<string, string | number>> = [];
+
+  for (const batchFolder of batchFolders) {
+    const metricsFile = path.join(directionFolder, batchFolder, `${batchFolder}_metrics.json`);
+
+    if (fs.existsSync(metricsFile)) {
+      try {
+        const content = fs.readFileSync(metricsFile, 'utf-8');
+        const report: MetricsReport = JSON.parse(content);
+
+        // Extract addresses from cfgEcho
+        const xrplAddress = report.cfgEcho?.xrplAddress || '';
+        const evmAddress = report.cfgEcho?.evmAddress || '';
+
+        // Create a temporary RunConfig
+        const cfg: RunConfig = {
+          tag: report.summary.tag,
+          networks: {
+            mode: mode as NetworkMode,
+            xrpl: {
+              wsUrl: report.cfgEcho?.xrplUrl || '',
+              gateway: report.cfgEcho?.xrplUrl || '',
+              walletSeed: '',
+              gas_fee: '',
+            },
+            evm: {
+              rpcUrl: report.cfgEcho?.evmUrl || '',
+              gateway: report.cfgEcho?.evmUrl || '',
+              walletPrivateKey: '',
+              relayer: '',
+            }
+          },
+          direction: report.summary.direction as NetworkDirection,
+          xrpAmount: report.summary.xrpAmount,
+          runs: report.summary.runsPlanned,
+          bridgeName: report.summary.bridgeName,
+        };
+
+        const row = summaryToCsvRow(report.summary, cfg, xrplAddress, evmAddress);
+        csvRows.push(row);
+      } catch (err) {
+        console.warn(`Failed to read metrics from ${metricsFile}:`, err);
+      }
+    }
+  }
+
+  // Sort by timestamp (newest first) and write CSV
+  csvRows.sort((a, b) => {
+    const timeA = new Date(a.timestampIso as string).getTime();
+    const timeB = new Date(b.timestampIso as string).getTime();
+    return timeB - timeA;
+  });
+
+  writeCsv(directionSummaryCsv, csvRows);
+
+  return directionSummary;
+}
+
+/**
+ * Recompute all_metrics.csv from all batch metrics across all modes and directions
+ */
+export function recomputeAllMetricsCsv(): { count: number; stats: { modes: number; directions: number; batches: number } } {
+  const allCsvPath = path.join("data", "results", "all_metrics.csv");
+  const allRows: Array<Record<string, string | number>> = [];
+
+  const resultsFolder = path.join("data", "results");
+  if (!fs.existsSync(resultsFolder)) {
+    return { count: 0, stats: { modes: 0, directions: 0, batches: 0 } };
+  }
+
+  let totalModes = 0;
+  let totalDirections = 0;
+  let totalBatches = 0;
+
+  // Iterate through all modes (mainnet, testnet, etc.)
+  const modes = fs.readdirSync(resultsFolder, { withFileTypes: true })
+    .filter(dirent => dirent.isDirectory())
+    .map(dirent => dirent.name);
+
+  totalModes = modes.length;
+
+  for (const mode of modes) {
+    const modeFolder = path.join(resultsFolder, mode);
+
+    // Get all direction folders (excluding deprecated)
+    const directionFolders = fs.readdirSync(modeFolder, { withFileTypes: true })
+      .filter(dirent => dirent.isDirectory() && !dirent.name.includes('deprecated'))
+      .map(dirent => dirent.name);
+
+    totalDirections += directionFolders.length;
+
+    for (const directionFolder of directionFolders) {
+      const directionPath = path.join(modeFolder, directionFolder);
+
+      // Get all batch folders
+      const batchFolders = fs.readdirSync(directionPath, { withFileTypes: true })
+        .filter(dirent => dirent.isDirectory())
+        .map(dirent => dirent.name);
+
+      totalBatches += batchFolders.length;
+
+      for (const batchFolder of batchFolders) {
+        const metricsFile = path.join(directionPath, batchFolder, `${batchFolder}_metrics.json`);
+
+        if (fs.existsSync(metricsFile)) {
+          try {
+            const content = fs.readFileSync(metricsFile, 'utf-8');
+            const report: MetricsReport = JSON.parse(content);
+
+            // Extract addresses from cfgEcho
+            const xrplAddress = report.cfgEcho?.xrplAddress || '';
+            const evmAddress = report.cfgEcho?.evmAddress || '';
+
+            // Create a temporary RunConfig from cfgEcho for summaryToCsvRow
+            const cfg: RunConfig = {
+              tag: report.summary.tag,
+              networks: {
+                mode: mode as NetworkMode,
+                xrpl: {
+                  wsUrl: report.cfgEcho?.xrplUrl || '',
+                  gateway: report.cfgEcho?.xrplUrl || '',
+                  walletSeed: '',
+                  gas_fee: '',
+                },
+                evm: {
+                  rpcUrl: report.cfgEcho?.evmUrl || '',
+                  gateway: report.cfgEcho?.evmUrl || '',
+                  walletPrivateKey: '',
+                  relayer: '',
+                }
+              },
+              direction: report.summary.direction as NetworkDirection,
+              xrpAmount: report.summary.xrpAmount,
+              runs: report.summary.runsPlanned,
+              bridgeName: report.summary.bridgeName,
+            };
+
+            const row = summaryToCsvRow(report.summary, cfg, xrplAddress, evmAddress);
+            allRows.push(row);
+          } catch (err) {
+            console.warn(`Failed to read metrics from ${metricsFile}:`, err);
+          }
+        }
+      }
+    }
+  }
+
+  // Sort rows by timestamp (newest first)
+  allRows.sort((a, b) => {
+    const timeA = new Date(a.timestampIso as string).getTime();
+    const timeB = new Date(b.timestampIso as string).getTime();
+    return timeB - timeA;
+  });
+
+  // Write the CSV
+  writeCsv(allCsvPath, allRows);
+
+  return {
+    count: allRows.length,
+    stats: {
+      modes: totalModes,
+      directions: totalDirections,
+      batches: totalBatches
+    }
+  };
+}

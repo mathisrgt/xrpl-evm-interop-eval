@@ -57,6 +57,8 @@ export interface MetricsReport {
     runs: number;
     xrplUrl: string;
     evmUrl: string;
+    xrplAddress?: string;
+    evmAddress?: string;
   };
 }
 

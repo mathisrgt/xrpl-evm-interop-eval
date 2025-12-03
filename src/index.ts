@@ -2,7 +2,7 @@ import chalk from "chalk";
 import { createRunContext, createRunRecord, updateTimestamp, updateTxHash } from "./runners/context";
 import type { RunRecord } from "./types";
 import { saveBatchArtifacts } from "./utils/fsio";
-import { displayMetrics, logConfig, logError, logObserve, logPrepare, logRecord, logStep, logSubmit, showMenu } from "./utils/logger";
+import { displayMetrics, logConfig, logError, logObserve, logPrepare, logRecord, logStep, logSubmit, showMenu, showMainMenu } from "./utils/logger";
 import { waitWithCountdown } from "./utils/time";
 import { computeMetrics } from "./utils/metrics";
 import { createRunner, BridgeType } from "./runners/runner.factory";
@@ -10,7 +10,15 @@ import { getXrplWallet, getEvmAccount } from "./utils/environment";
 import * as readline from 'readline';
 
 async function main() {
-    const { config: cfg, bridgeType } = await showMenu();
+    const result = await showMainMenu();
+
+    if (result.action === 'metrics') {
+        // Metrics management mode - handled in showMainMenu
+        return;
+    }
+
+    // Bridge test mode - continue with bridge configuration
+    const { config: cfg, bridgeType } = await showMenu(result.mode!);
 
     // Display wallet addresses and get confirmation
     console.log(chalk.bold('\n📍 Wallet Addresses'));

@@ -1,6 +1,6 @@
 {
   "summary": {
-    "timestampIso": "2025-12-03T13:40:19.951Z",
+    "timestampIso": "2025-12-03T15:29:18.651Z",
     "tag": "mainnet_fasset_xrpl_to_flare_aggregated",
     "bridgeName": "fasset",
     "direction": "xrpl_to_flare",
@@ -35,5 +35,5 @@
     "batchDurationMs": 517096
   },
   "batchCount": 2,
-  "lastUpdated": "2025-12-03T13:40:19.952Z"
+  "lastUpdated": "2025-12-03T15:29:18.653Z"
 }

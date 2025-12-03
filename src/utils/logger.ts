@@ -4,6 +4,7 @@ import { formatElapsedMs } from "./time";
 import readline from "readline";
 import { loadConfig } from "../runners/config";
 import { MetricsSummary } from "./metrics";
+import { getDirectionFolders, recomputeDirectionMetrics, recomputeAllMetricsCsv } from "./fsio";
 
 function formatAddress(address: string, chain: 'xrpl' | 'evm', showPrefix: boolean = false): string {
     if (chain === 'xrpl') {
@@ -403,7 +404,7 @@ async function confirmConfiguration(rl: readline.Interface, config: RunConfig): 
 }
 
 
-export async function showMenu(): Promise<{ config: RunConfig; bridgeType: string }> {
+export async function showMenu(networkMode: NetworkMode): Promise<{ config: RunConfig; bridgeType: string }> {
     const rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout
@@ -412,8 +413,7 @@ export async function showMenu(): Promise<{ config: RunConfig; bridgeType: strin
     try {
         displayBanner();
 
-        // Collect all configuration parameters
-        const networkMode = await selectNetworkMode(rl);
+        // Collect all configuration parameters (mode already selected)
         const bridgeType = await selectBridgeType(rl);
         const networkDirection = await selectBridgeDirection(rl, bridgeType);
 
@@ -448,6 +448,211 @@ export async function showMenu(): Promise<{ config: RunConfig; bridgeType: strin
 
     } finally {
         rl.close();
+    }
+}
+
+/**
+ * Show main menu: Select network mode or manage metrics
+ */
+export async function showMainMenu(): Promise<{ action: 'bridge' | 'metrics', mode?: NetworkMode }> {
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+    });
+
+    try {
+        console.log(chalk.bold.cyan('\n╔══════════════════════════════════════════════════════════════════════════════╗'));
+        console.log(chalk.bold.cyan('║             XRPL ↔ EVM Bridge Performance & Metrics Tool                     ║'));
+        console.log(chalk.bold.cyan('╚══════════════════════════════════════════════════════════════════════════════╝\n'));
+
+        console.log(chalk.bold('📋 Menu'));
+        console.log(` 1) ${chalk.bold('Run tests')} ${chalk.dim('(Execute cross-chain bridge transactions)')}`);
+        console.log(` 2) ${chalk.bold('Compute metrics')} ${chalk.dim('(Regenerate aggregated metrics)')}`);
+
+        while (true) {
+            const answer = await askQuestion(rl, '\nEnter your choice: ');
+
+            switch (answer) {
+                case '1':
+                    const mode = await selectNetworkModeForTests(rl);
+                    return { action: 'bridge', mode };
+                case '2':
+                    await showMetricsMenu(rl);
+                    return { action: 'metrics' };
+                default:
+                    console.log(chalk.red('❌ Invalid choice. Please enter 1 or 2.'));
+            }
+        }
+    } finally {
+        rl.close();
+    }
+}
+
+/**
+ * Select network mode for running tests
+ */
+async function selectNetworkModeForTests(rl: readline.Interface): Promise<NetworkMode> {
+    console.log(chalk.bold('\n🌐 Select Network Mode:'));
+    console.log(` 1) ${chalk.bold('Testnet')} ${chalk.dim('(Test with testnet funds)')}`);
+    console.log(` 2) ${chalk.bold('Mainnet')} ${chalk.dim('(Use real funds)')}`);
+
+    while (true) {
+        const answer = await askQuestion(rl, '\nEnter your choice: ');
+
+        switch (answer) {
+            case '1':
+                console.log(chalk.green('✓ Selected: Testnet\n'));
+                return 'testnet';
+            case '2':
+                console.log(chalk.yellow('⚠️  Selected: Mainnet (real funds will be used)\n'));
+                return 'mainnet';
+            default:
+                console.log(chalk.red('❌ Invalid choice. Please enter 1 or 2.'));
+        }
+    }
+}
+
+/**
+ * Show metrics computation submenu
+ */
+async function showMetricsMenu(rl: readline.Interface): Promise<void> {
+    console.log(chalk.bold.cyan('\n╔══════════════════════════════════════════════════════════════════════════════╗'));
+    console.log(chalk.bold.cyan('║                          Metrics Computation                                 ║'));
+    console.log(chalk.bold.cyan('╚══════════════════════════════════════════════════════════════════════════════╝\n'));
+
+    console.log(chalk.bold('📊 Metrics Options:'));
+    console.log(` 1) ${chalk.bold('Recompute folder metrics')} ${chalk.dim('(Regenerate metrics for one folder)')}`);
+    console.log(` 2) ${chalk.bold('Recompute all metrics')} ${chalk.dim('(Rebuild all_metrics.csv)')}`);
+
+    while (true) {
+        const answer = await askQuestion(rl, '\nEnter your choice: ');
+
+        switch (answer) {
+            case '1':
+                await recomputeSpecificFolderMetrics(rl);
+                return;
+            case '2':
+                await recomputeAllMetrics();
+                return;
+            default:
+                console.log(chalk.red('❌ Invalid choice. Please enter 1 or 2.'));
+        }
+    }
+}
+
+/**
+ * Recompute metrics for a specific folder
+ */
+async function recomputeSpecificFolderMetrics(rl: readline.Interface): Promise<void> {
+    console.log(chalk.bold('\n🌐 Select Network Mode:'));
+    console.log(` 1) ${chalk.bold('Testnet')}`);
+    console.log(` 2) ${chalk.bold('Mainnet')}`);
+
+    let mode: NetworkMode;
+    while (true) {
+        const answer = await askQuestion(rl, '\nEnter your choice: ');
+
+        if (answer === '1') {
+            mode = 'testnet';
+            console.log(chalk.green('✓ Selected: Testnet'));
+            break;
+        } else if (answer === '2') {
+            mode = 'mainnet';
+            console.log(chalk.green('✓ Selected: Mainnet'));
+            break;
+        } else {
+            console.log(chalk.red('❌ Invalid choice. Please enter 1 or 2.'));
+        }
+    }
+
+    const folders = getDirectionFolders(mode);
+
+    if (folders.length === 0) {
+        console.log(chalk.yellow(`\n⚠️  No direction folders found in ${mode} mode.`));
+        return;
+    }
+
+    console.log(chalk.bold(`\n📁 Available Folders in ${mode.toUpperCase()}:`));
+    folders.forEach((folder, index) => {
+        console.log(` ${index + 1}) ${chalk.bold(folder.folder)} ${chalk.dim(`(${folder.bridgeName})`)}`);
+    });
+
+    while (true) {
+        const answer = await askQuestion(rl, '\nSelect a folder (enter number): ');
+        const choice = parseInt(answer, 10);
+
+        if (choice >= 1 && choice <= folders.length) {
+            const selected = folders[choice - 1];
+            console.log(chalk.cyan(`\n🔄 Recomputing metrics for: ${selected.folder}`));
+
+            const summary = recomputeDirectionMetrics(mode, selected.bridgeName, selected.direction);
+
+            if (summary) {
+                console.log(chalk.green(`\n✅ Successfully recomputed metrics for ${selected.folder}`));
+                console.log(chalk.dim(`   JSON: data/results/${mode}/${selected.folder}/${selected.bridgeName}_${selected.direction}_aggregated_metrics.json`));
+                console.log(chalk.dim(`   CSV:  data/results/${mode}/${selected.folder}/${selected.bridgeName}_${selected.direction}_summary.csv`));
+
+                // Display computed metrics
+                console.log(chalk.bold('\n📊 Computed Metrics Summary:'));
+                console.log(chalk.dim('─'.repeat(60)));
+                console.log(`   Bridge:           ${chalk.cyan(summary.bridgeName)}`);
+                console.log(`   Direction:        ${chalk.cyan(summary.direction)}`);
+                console.log(`   Total Runs:       ${chalk.yellow(summary.totalRuns)}`);
+                console.log(`   Success:          ${chalk.green(summary.successCount)} (${chalk.green((summary.successRate * 100).toFixed(1) + '%')})`);
+                console.log(`   Failures:         ${chalk.red(summary.failureCount)}`);
+
+                if (summary.latency.meanMs !== null) {
+                    console.log(`\n   ${chalk.bold('Latency:')}`);
+                    console.log(`   Mean:             ${chalk.yellow(summary.latency.meanMs.toFixed(2))} ms`);
+                    console.log(`   P50:              ${chalk.yellow((summary.latency.p50Ms ?? 0).toFixed(2))} ms`);
+                    console.log(`   P90:              ${chalk.yellow((summary.latency.p90Ms ?? 0).toFixed(2))} ms`);
+                    console.log(`   P95:              ${chalk.yellow((summary.latency.p95Ms ?? 0).toFixed(2))} ms`);
+                    console.log(`   Min/Max:          ${chalk.dim((summary.latency.minMs ?? 0).toFixed(2))} / ${chalk.dim((summary.latency.maxMs ?? 0).toFixed(2))} ms`);
+                }
+
+                if (summary.costs?.meanTotal !== null) {
+                    console.log(`\n   ${chalk.bold('Costs:')}`);
+                    console.log(`   Mean Total:       ${chalk.yellow((summary.costs.meanTotal).toFixed(6))} ${summary.currency}`);
+                    if (summary.costs.meanBridge !== null) {
+                        console.log(`   Mean Bridge Fee:  ${chalk.yellow((summary.costs.meanBridge).toFixed(6))} ${summary.currency}`);
+                    }
+                    console.log(`   Mean Source Fee:  ${chalk.dim((summary.costs.meanSourceFee ?? 0).toFixed(6))} ${summary.currency}`);
+                    console.log(`   Mean Target Fee:  ${chalk.dim((summary.costs.meanTargetFee ?? 0).toFixed(6))} ${summary.currency}`);
+                }
+
+                console.log(chalk.dim('─'.repeat(60)));
+            } else {
+                console.log(chalk.red(`\n❌ Failed to recompute metrics for ${selected.folder}`));
+            }
+            return;
+        } else {
+            console.log(chalk.red(`❌ Invalid choice. Please enter a number between 1 and ${folders.length}.`));
+        }
+    }
+}
+
+/**
+ * Recompute all_metrics.csv from all batch folders
+ */
+async function recomputeAllMetrics(): Promise<void> {
+    console.log(chalk.cyan('\n🔄 Recomputing all_metrics.csv from all batch folders...'));
+    console.log(chalk.dim('   Scanning all modes and directions (excluding deprecated folders)...\n'));
+
+    const result = recomputeAllMetricsCsv();
+
+    if (result.count > 0) {
+        console.log(chalk.green(`\n✅ Successfully rebuilt all_metrics.csv`));
+        console.log(chalk.dim(`   File: data/results/all_metrics.csv`));
+
+        console.log(chalk.bold('\n📊 Scan Results:'));
+        console.log(chalk.dim('─'.repeat(60)));
+        console.log(`   Modes scanned:        ${chalk.yellow(result.stats.modes)}`);
+        console.log(`   Direction folders:    ${chalk.yellow(result.stats.directions)}`);
+        console.log(`   Batch folders:        ${chalk.yellow(result.stats.batches)}`);
+        console.log(`   Metrics processed:    ${chalk.green(result.count)}`);
+        console.log(chalk.dim('─'.repeat(60)));
+    } else {
+        console.log(chalk.yellow('\n⚠️  No batch metrics found to process.'));
     }
 }
 
