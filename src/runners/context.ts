@@ -44,6 +44,10 @@ export function createRunRecord(
 ): RunRecord {
     const gasRefund = gasRfdOutput?.xrpAmount || 0;
 
+    // For FAsset manual bridge, don't calculate bridge fees (token decimals issues)
+    // Just record transaction fees
+    const isFasset = ctx.cfg.bridgeName === 'fasset';
+
     return {
         runId: ctx.cfg.tag,
         cfg: ctx.cfg,
@@ -52,9 +56,12 @@ export function createRunRecord(
         costs: {
             sourceFee: srcOutput.txFee,
             targetFee: trgOutput.txFee,
-            bridgeFee: srcOutput.xrpAmount - trgOutput.xrpAmount - gasRefund,
-            totalBridgeCost: srcOutput.xrpAmount + srcOutput.txFee - gasRefund - trgOutput.xrpAmount,
-            totalCost: srcOutput.xrpAmount + srcOutput.txFee - gasRefund
+            // For FAsset, set bridge fee to null due to token decimal issues
+            bridgeFee: isFasset ? null : (srcOutput.xrpAmount - trgOutput.xrpAmount - gasRefund),
+            // For FAsset, only sum the transaction fees
+            totalBridgeCost: isFasset ? null : (srcOutput.xrpAmount + srcOutput.txFee - gasRefund - trgOutput.xrpAmount),
+            // For FAsset, total cost is just the sum of tx fees
+            totalCost: isFasset ? (srcOutput.txFee + trgOutput.txFee) : (srcOutput.xrpAmount + srcOutput.txFee - gasRefund)
         },
         success,
         abort_reason: abortReason,

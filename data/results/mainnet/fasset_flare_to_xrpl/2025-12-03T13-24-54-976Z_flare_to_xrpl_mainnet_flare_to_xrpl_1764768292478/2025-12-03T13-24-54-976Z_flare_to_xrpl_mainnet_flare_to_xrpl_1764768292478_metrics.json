@@ -1,0 +1,52 @@
+{
+  "summary": {
+    "timestampIso": "2025-12-03T13:25:34.409Z",
+    "tag": "mainnet_flare_to_xrpl_1764768292478",
+    "bridgeName": "fasset",
+    "direction": "flare_to_xrpl",
+    "xrpAmount": 10,
+    "currency": "XRP",
+    "runsPlanned": 1,
+    "totalRuns": 1,
+    "successCount": 1,
+    "failureCount": 0,
+    "successRate": 1,
+    "latency": {
+      "n": 1,
+      "minMs": 39225,
+      "p50Ms": 39225,
+      "p90Ms": 39225,
+      "p95Ms": 39225,
+      "p99Ms": 39225,
+      "maxMs": 39225,
+      "meanMs": 39225,
+      "stdDevMs": 0
+    },
+    "costs": {
+      "n": 1,
+      "meanTotal": 0.06069599168683576,
+      "minTotal": 0.06069599168683576,
+      "maxTotal": 0.06069599168683576,
+      "stdDevTotal": 0,
+      "meanBridge": null,
+      "meanSourceFee": 0.06068399168683576,
+      "meanTargetFee": 0.000012
+    },
+    "batchDurationMs": 39430
+  },
+  "latenciesMs": [
+    39225
+  ],
+  "failureReasons": {},
+  "cfgEcho": {
+    "tag": "mainnet_flare_to_xrpl_1764768292478",
+    "mode": "mainnet",
+    "direction": "flare_to_xrpl",
+    "xrpAmount": 10,
+    "runs": 1,
+    "xrplUrl": "wss://xrplcluster.com/",
+    "evmUrl": "https://rpc.xrplevm.org",
+    "xrplAddress": "rneoLeMEDF3aRzd2ejsEo3MabLsjCnho55",
+    "evmAddress": "0xeF0e7DD8823791927C9685ef946350971A21114E"
+  }
+}

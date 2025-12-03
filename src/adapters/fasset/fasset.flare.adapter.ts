@@ -10,10 +10,6 @@ const FXRP_TOKEN_ADDRESS: Address = "0xAd552A648C74D49E10027AB8a618A3ad4901c5bE"
 // Flare RPC block range limit (max 30 blocks per getLogs query)
 const FLARE_MAX_BLOCK_RANGE = 30n;
 
-// FXRP token decimals (18 decimals like ETH)
-// Note: If detection issues occur, verify decimals on-chain
-const FXRP_DECIMALS = 18;
-
 /**
  * Helper function to query logs in chunks to avoid Flare's block range limit
  */

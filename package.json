@@ -14,7 +14,7 @@
     "@defuse-protocol/one-click-sdk-typescript": "^0.1.14",
     "@types/node": "^24.5.2",
     "chalk": "^5.6.2",
-    "dotenv": "^17.2.2",
+    "dotenv": "^16.4.5",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.2",
     "viem": "^2.37.8",
