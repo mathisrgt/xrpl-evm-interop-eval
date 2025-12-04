@@ -832,7 +832,6 @@ export function displayMetrics(metrics: MetricsSummary): void {
         console.log(`  P50 (Median):     ${chalk.cyan(fxMs(metrics.latency.p50Ms))}`);
         console.log(`  P90:              ${chalk.cyan(fxMs(metrics.latency.p90Ms))}`);
         console.log(`  P95:              ${chalk.cyan.bold(fxMs(metrics.latency.p95Ms))}`);
-        console.log(`  P99:              ${chalk.cyan.bold(fxMs(metrics.latency.p99Ms))}`);
         console.log(`  Max:              ${chalk.cyan(fxMs(metrics.latency.maxMs))}`);
         console.log(`  Mean:             ${chalk.white(fxMs(metrics.latency.meanMs))}`);
         console.log(`  Std Dev:          ${chalk.dim(fxMs(metrics.latency.stdDevMs))}`);

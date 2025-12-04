@@ -6,7 +6,6 @@ export interface LatencyStats {
   p50Ms: number | null;
   p90Ms: number | null;
   p95Ms: number | null;
-  p99Ms: number | null;
   maxMs: number | null;
   meanMs: number | null;
   stdDevMs: number | null;
@@ -125,7 +124,6 @@ export function computeMetrics(cfg: RunConfig, records: RunRecord[], batchDurati
     p50Ms: latencies.length ? percentile(latSorted, 0.50) : null,
     p90Ms: latencies.length ? percentile(latSorted, 0.90) : null,
     p95Ms: latencies.length ? percentile(latSorted, 0.95) : null,
-    p99Ms: latencies.length ? percentile(latSorted, 0.99) : null,
     maxMs: latencies.length ? latSorted[latSorted.length - 1] : null,
     meanMs: mean(latencies),
     stdDevMs: stddev(latencies),
