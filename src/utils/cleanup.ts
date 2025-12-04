@@ -1,5 +1,4 @@
 import type { Client as XrplClient } from "xrpl";
-import type { Interface as ReadlineIF } from "node:readline";
 
 export type Disposer = () => void | Promise<void>;
 

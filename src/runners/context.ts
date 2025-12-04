@@ -1,6 +1,55 @@
-import { dropsToXrp } from "xrpl";
-import { RunContext, RunConfig, RunRecord, SourceOutput, TargetOutput, GasRefundOutput } from "../types";
+import { GasRefundOutput, RunConfig, RunContext, RunRecord, SourceOutput, TargetOutput } from "../types";
 import { CleanupManager } from "../utils/cleanup";
+
+/**
+ * Detect error type from error message
+ * Returns a standardized error type string or undefined if not detected
+ */
+function detectErrorType(errorMessage?: string): string | undefined {
+    if (!errorMessage) return undefined;
+
+    const lowerError = errorMessage.toLowerCase();
+
+    // Timeout errors
+    if (lowerError.includes('timeout')) {
+        return 'TIMEOUT';
+    }
+
+    // Funding/balance errors
+    if (lowerError.includes('not funded') ||
+        lowerError.includes('insufficient') ||
+        lowerError.includes('underfunded') ||
+        lowerError.includes('unfunded')) {
+        return 'NOT_FUNDED_ADDRESS';
+    }
+
+    // Network/connection errors
+    if (lowerError.includes('network') ||
+        lowerError.includes('connection') ||
+        lowerError.includes('disconnected')) {
+        return 'NETWORK_ERROR';
+    }
+
+    // Transaction errors
+    if (lowerError.includes('transaction failed') ||
+        lowerError.includes('tx failed') ||
+        lowerError.includes('reverted')) {
+        return 'TRANSACTION_FAILED';
+    }
+
+    // Gas errors
+    if (lowerError.includes('gas') && lowerError.includes('low')) {
+        return 'INSUFFICIENT_GAS';
+    }
+
+    // RPC errors
+    if (lowerError.includes('rpc') || lowerError.includes('rate limit')) {
+        return 'RPC_ERROR';
+    }
+
+    // If no specific pattern matched, return undefined (empty field)
+    return undefined;
+}
 
 /**
  * Create a new RunContext with initialized empty state
@@ -65,6 +114,7 @@ export function createRunRecord(
         },
         success,
         abort_reason: abortReason,
+        error_type: detectErrorType(abortReason),
     };
 }
 

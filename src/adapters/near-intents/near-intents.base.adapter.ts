@@ -139,7 +139,7 @@ export const baseAdapter: ChainAdapter = {
         const { publicClient, account, depositAddress } = ctx.cache.evm!;
         if (!publicClient || !account) throw new Error("EVM not prepared");
 
-        const timeoutMs = 5 * 60_000;
+        const timeoutMs = 10 * 60_000; // 10 minutes timeout
 
         // Use the block where we submitted, or current block if not available
         const submitBlockNumber = (ctx.cache.evm as any).submitBlockNumber;

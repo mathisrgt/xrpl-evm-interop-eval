@@ -1,8 +1,8 @@
-import { Client, Payment, Wallet, dropsToXrp, xrpToDrops } from "xrpl";
-import type { ChainAdapter, RunContext, SourceOutput, TargetOutput, GasRefundOutput } from "../../types";
 import { OneClickService, OpenAPI, QuoteRequest } from "@defuse-protocol/one-click-sdk-typescript";
-import { ONE_CLICK_JWT, getXrplWallet } from "../../utils/environment";
+import { Client, Payment, dropsToXrp, xrpToDrops } from "xrpl";
+import type { ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../../types";
 import { NEAR_INTENTS_TOKEN_IDS } from "../../utils/constants";
+import { ONE_CLICK_JWT, getXrplWallet } from "../../utils/environment";
 
 export const xrplAdapter: ChainAdapter = {
 

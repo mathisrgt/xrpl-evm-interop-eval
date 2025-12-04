@@ -1,20 +1,10 @@
-import { Address, createPublicClient, createWalletClient, encodeFunctionData, erc20Abi, formatEther, http, parseEther, parseUnits } from "viem";
+import axios from "axios";
+import chalk from "chalk";
+import { Address, createPublicClient, createWalletClient, erc20Abi, formatEther, http, parseEther } from "viem";
 import { xrplevmTestnet } from "viem/chains";
 import { ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../../types";
 import { xrplevm } from "../../utils/chains";
-import {
-    EVM_GATEWAY_ABI,
-    GAS_SERVICE_ADDRESS,
-    INTERCHAIN_GAS_AMOUNT,
-    INTERCHAIN_TOKEN_SERVICE_ABI,
-    INTERCHAIN_TOKEN_SERVICE_ADDRESS,
-    NATIVE_TOKEN_ADDRESS,
-    XRP_TOKEN_ID
-} from "../../utils/constants";
 import { getEvmAccount, SQUID_INTEGRATOR_ID } from "../../utils/environment";
-import { waitWithCountdown } from "../../utils/time";
-import axios from "axios";
-import chalk from "chalk";
 
 // Helper to get token address format
 function getTokenAddress(chainId: string, tokenAddress: string): string {
@@ -323,7 +313,7 @@ export const evmAdapter: ChainAdapter = {
         const url = `${ctx.cache.evm?.chain.blockExplorers?.default.apiUrl}/addresses/${account.address}/internal-transactions?filter=to`;
 
         const recentBlocks = 10;
-        const timeoutMs = 5 * 60_000;
+        const timeoutMs = 10 * 60_000; // 10 minutes timeout
 
         return await new Promise<GasRefundOutput>((resolve, reject) => {
             let done = false;

@@ -136,4 +136,5 @@ export interface RunRecord {
     costs: RunCosts;
     success: boolean;
     abort_reason?: string;
+    error_type?: string; // TIMEOUT, NOT_FUNDED_ADDRESS, etc. Empty if not detected
 }

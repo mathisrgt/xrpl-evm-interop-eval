@@ -1,24 +1,75 @@
 import chalk from "chalk";
 import { createRunContext, createRunRecord, updateTimestamp, updateTxHash } from "./runners/context";
-import type { RunRecord } from "./types";
+import type { RunConfig, RunRecord } from "./types";
 import { saveBatchArtifacts } from "./utils/fsio";
 import { displayMetrics, logConfig, logError, logObserve, logPrepare, logRecord, logStep, logSubmit, showMenu, showMainMenu } from "./utils/logger";
 import { waitWithCountdown } from "./utils/time";
 import { computeMetrics } from "./utils/metrics";
 import { createRunner, BridgeType } from "./runners/runner.factory";
 import { getXrplWallet, getEvmAccount } from "./utils/environment";
+import { parseCliArgs, validateCliArgs, displayHelp, displayValidationErrors } from "./utils/cli";
+import { loadConfig } from "./runners/config";
 import * as readline from 'readline';
 
 async function main() {
-    const result = await showMainMenu();
+    // Parse CLI arguments
+    const cliArgs = parseCliArgs();
 
-    if (result.action === 'metrics') {
-        // Metrics management mode - handled in showMainMenu
+    // Handle help command
+    if (cliArgs.help) {
+        displayHelp();
         return;
     }
 
-    // Bridge test mode - continue with bridge configuration
-    const { config: cfg, bridgeType } = await showMenu(result.mode!);
+    // Validate CLI arguments
+    const validation = validateCliArgs(cliArgs);
+
+    let cfg: RunConfig;
+    let bridgeType: string;
+
+    // If CLI validation failed, show errors and use interactive menu
+    if (cliArgs.src || cliArgs.dst) {
+        if (!validation.valid) {
+            displayValidationErrors(validation);
+            console.log(chalk.cyan('Falling back to interactive menu...\n'));
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+    }
+
+    // Use CLI mode if validation passed
+    if (validation.valid && validation.direction && validation.bridgeType !== undefined && validation.amount !== undefined && validation.runs !== undefined) {
+        console.log(chalk.bold.cyan('\n╔══════════════════════════════════════════════════════════════════════════════╗'));
+        console.log(chalk.bold.cyan('║             XRPL ↔ EVM Bridge Performance & Metrics Tool                     ║'));
+        console.log(chalk.bold.cyan('╚══════════════════════════════════════════════════════════════════════════════╝\n'));
+
+        console.log(chalk.green('✅ CLI mode: Using provided parameters\n'));
+
+        // Load configuration from CLI arguments
+        cfg = loadConfig(validation.mode!, validation.direction, validation.amount, validation.runs, validation.bridgeType);
+        bridgeType = validation.bridgeType;
+
+        // Display configuration summary
+        console.log(chalk.bold('📋 Configuration:'));
+        console.log(`  ${chalk.bold('Bridge:')}     ${chalk.cyan(bridgeType)}`);
+        console.log(`  ${chalk.bold('Direction:')} ${chalk.cyan(validation.direction)}`);
+        console.log(`  ${chalk.bold('Mode:')}      ${chalk.cyan(validation.mode)}`);
+        console.log(`  ${chalk.bold('Amount:')}    ${chalk.cyan(validation.amount)} XRP`);
+        console.log(`  ${chalk.bold('Runs:')}      ${chalk.cyan(validation.runs)}`);
+        console.log('');
+    } else {
+        // Interactive menu mode
+        const result = await showMainMenu();
+
+        if (result.action === 'metrics') {
+            // Metrics management mode - handled in showMainMenu
+            return;
+        }
+
+        // Bridge test mode - continue with bridge configuration
+        const menuResult = await showMenu(result.mode!);
+        cfg = menuResult.config;
+        bridgeType = menuResult.bridgeType;
+    }
 
     // Display wallet addresses and get confirmation
     console.log(chalk.bold('\n📍 Wallet Addresses'));

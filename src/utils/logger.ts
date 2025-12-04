@@ -5,6 +5,10 @@ import readline from "readline";
 import { loadConfig } from "../runners/config";
 import { MetricsSummary } from "./metrics";
 import { getDirectionFolders, recomputeDirectionMetrics, recomputeAllMetricsCsv } from "./fsio";
+import { getXrplWallet, getEvmAccount } from "./environment";
+import { Client } from "xrpl";
+import { createPublicClient, formatEther, http } from "viem";
+import { mainnet } from "viem/chains";
 
 /**
  * Get explorer URL for a transaction hash or address
@@ -536,6 +540,58 @@ export async function showMenu(networkMode: NetworkMode): Promise<{ config: RunC
 }
 
 /**
+ * Display wallet addresses and balances
+ */
+async function displayWalletInfo(): Promise<void> {
+    console.log(chalk.bold('💼 Wallet Information'));
+    console.log(chalk.dim('─'.repeat(78)));
+
+    try {
+        // Get wallet instances
+        const xrplWallet = getXrplWallet();
+        const evmAccount = getEvmAccount();
+
+        // Fetch XRPL balance
+        let xrplBalance = 'Loading...';
+        try {
+            const client = new Client('wss://xrplcluster.com/');
+            await client.connect();
+            const balance = await client.getXrpBalance(xrplWallet.address);
+            xrplBalance = `${Number(balance).toFixed(4)} XRP`;
+            await client.disconnect();
+        } catch (err) {
+            xrplBalance = chalk.red('Error fetching balance');
+        }
+
+        // Fetch EVM balance (using XRPL EVM sidechain)
+        let evmBalance = 'Loading...';
+        try {
+            const publicClient = createPublicClient({
+                chain: mainnet,
+                transport: http('https://rpc.xrplevm.org')
+            });
+            const balance = await publicClient.getBalance({ address: evmAccount.address as `0x${string}` });
+            evmBalance = `${parseFloat(formatEther(balance)).toFixed(4)} XRP`;
+        } catch (err) {
+            evmBalance = chalk.red('Error fetching balance');
+        }
+
+        // Display addresses and balances
+        console.log(`  ${chalk.bold('XRPL Address:')} ${chalk.cyan(xrplWallet.address)}`);
+        console.log(`  ${chalk.bold('Balance:')}      ${chalk.yellow(xrplBalance)}`);
+        console.log('');
+        console.log(`  ${chalk.bold('EVM Address:')}  ${chalk.cyan(evmAccount.address)}`);
+        console.log(`  ${chalk.bold('Balance:')}      ${chalk.yellow(evmBalance)}`);
+
+    } catch (err) {
+        console.log(chalk.red('  Error loading wallet information'));
+        console.log(chalk.dim(`  ${err instanceof Error ? err.message : String(err)}`));
+    }
+
+    console.log(chalk.dim('─'.repeat(78)));
+}
+
+/**
  * Show main menu: Select network mode or manage metrics
  */
 export async function showMainMenu(): Promise<{ action: 'bridge' | 'metrics', mode?: NetworkMode }> {
@@ -549,7 +605,10 @@ export async function showMainMenu(): Promise<{ action: 'bridge' | 'metrics', mo
         console.log(chalk.bold.cyan('║             XRPL ↔ EVM Bridge Performance & Metrics Tool                     ║'));
         console.log(chalk.bold.cyan('╚══════════════════════════════════════════════════════════════════════════════╝\n'));
 
-        console.log(chalk.bold('📋 Menu'));
+        // Display wallet addresses and balances
+        await displayWalletInfo();
+
+        console.log(chalk.bold('\n📋 Menu'));
         console.log(` 1) ${chalk.bold('Run tests')} ${chalk.dim('(Execute cross-chain bridge transactions)')}`);
         console.log(` 2) ${chalk.bold('Compute metrics')} ${chalk.dim('(Regenerate aggregated metrics)')}`);
 

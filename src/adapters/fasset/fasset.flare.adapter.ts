@@ -1,8 +1,8 @@
-import { Address, createPublicClient, createWalletClient, formatEther, formatUnits, http } from "viem";
+import chalk from "chalk";
+import { Address, createPublicClient, createWalletClient, formatEther, http } from "viem";
+import { flare } from "viem/chains";
 import { ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../../types";
 import { getEvmAccount } from "../../utils/environment";
-import { flare } from "viem/chains";
-import chalk from "chalk";
 
 // FXRP Token Address on Flare
 const FXRP_TOKEN_ADDRESS: Address = "0xAd552A648C74D49E10027AB8a618A3ad4901c5bE";

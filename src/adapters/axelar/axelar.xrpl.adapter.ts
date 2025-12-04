@@ -1,7 +1,7 @@
-import { Client, Payment, Wallet, convertStringToHex, dropsToXrp, xrpToDrops } from "xrpl";
-import type { ChainAdapter, RunContext, SourceOutput, TargetOutput, GasRefundOutput } from "../../types";
-import chalk from "chalk";
 import axios from "axios";
+import chalk from "chalk";
+import { Client, dropsToXrp, xrpToDrops } from "xrpl";
+import type { ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../../types";
 import { SQUID_INTEGRATOR_ID, getXrplWallet } from "../../utils/environment";
 
 // Helper to get token address format
