@@ -140,7 +140,7 @@ Each run follows the same bridging flow:
    ```
 
 7. **Configure the run**
-   - Answer the interactive prompts (network mode, direction, amount, runs).
+   - Answer the interactive prompts (direction, amount, runs).
 
 8. **Execute experiments**
    - The program will run the selected tests.

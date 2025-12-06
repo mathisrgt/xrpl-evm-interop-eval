@@ -2,7 +2,6 @@ import { NetworkConfig } from "../types";
 
 // Only mainnet is supported
 export const NETWORK_CONFIG: NetworkConfig = {
-  mode: "mainnet",
   xrpl: {
     wsUrl: "wss://xrplcluster.com/",
     walletSeed: "", // Deprecated - wallets now generated from MNEMONIC in environment.ts

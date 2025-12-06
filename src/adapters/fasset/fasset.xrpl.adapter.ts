@@ -217,7 +217,7 @@ export const xrplAdapter: ChainAdapter = {
 
                     if (!tx || tx.TransactionType !== "Payment") return;
 
-                    // Only interested in INCOMING payments TO our wallet
+                    // Only interested in INCOMING payments to our wallet
                     if (tx.Destination !== wallet.address) return;
 
                     // Get transaction timestamp from ledger close time

@@ -226,7 +226,7 @@ export const evmAdapter: ChainAdapter = {
         const currentBlock = await publicClient.getBlockNumber();
         const startBlock = currentBlock;
 
-        console.log(chalk.cyan(`🔍 Watching for XRP token transfers TO ${account.address} on XRPL-EVM (from block ${startBlock})`));
+        console.log(chalk.cyan(`🔍 Watching for XRP token transfers to ${account.address} on XRPL-EVM (from block ${startBlock})`));
         console.log(chalk.dim(`   Starting from current block ${currentBlock} to catch instant bridges`));
 
         return await new Promise<TargetOutput>((resolve, reject) => {

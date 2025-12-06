@@ -1,8 +1,5 @@
 import { CleanupManager } from "./utils/cleanup";
 
-/** Supported network environments. Only mainnet is supported. */
-export type NetworkMode = "mainnet";
-
 /** Direction of a transfer in the bridge tests. */
 export type NetworkDirection = "xrpl_to_base" | "base_to_xrpl" | "xrpl_to_xrpl_evm" | "xrpl_evm_to_xrpl" | "xrpl_to_flare" | "flare_to_xrpl";
 
@@ -74,7 +71,6 @@ export interface ChainAdapter {
 
 /** Per-network endpoints & gateways (no run-specific fields here). */
 export type NetworkConfig = {
-    mode: NetworkMode;
     xrpl: {
         wsUrl: string;
         walletSeed: string;

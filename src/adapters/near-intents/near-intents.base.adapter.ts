@@ -245,7 +245,7 @@ export const baseAdapter: ChainAdapter = {
         const currentBlock = await publicClient.getBlockNumber();
         const startBlock = submitBlockNumber || currentBlock;
 
-        console.log(`🔍 Watching for USDC transfers TO ${account.address} on Base (from block ${startBlock})`);
+        console.log(`🔍 Watching for USDC transfers to ${account.address} on Base (from block ${startBlock})`);
         if (submitBlockNumber) {
             console.log(chalk.dim(`   Starting from submit block: ${submitBlockNumber}`));
         } else {

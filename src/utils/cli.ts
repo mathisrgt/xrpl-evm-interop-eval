@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { NetworkDirection, NetworkMode } from "../types";
+import { NetworkDirection } from "../types";
 
 export interface CliArgs {
     help: boolean;

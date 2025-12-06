@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { RunConfig, SourceOutput, TargetOutput, NetworkDirection, RunContext, RunRecord, NetworkMode } from "../types";
+import { RunConfig, SourceOutput, TargetOutput, NetworkDirection, RunContext, RunRecord } from "../types";
 import { formatElapsedMs } from "./time";
 import readline from "readline";
 import { loadConfig } from "../runners/config";
@@ -729,15 +729,14 @@ async function showMetricsMenu(rl: readline.Interface): Promise<void> {
  * Recompute metrics for a specific folder
  */
 async function recomputeSpecificFolderMetrics(rl: readline.Interface): Promise<void> {
-    const mode: NetworkMode = 'mainnet';
-    const folders = getDirectionFolders(mode);
+    const folders = getDirectionFolders();
 
     if (folders.length === 0) {
-        console.log(chalk.yellow(`\n⚠️  No direction folders found in ${mode} mode.`));
+        console.log(chalk.yellow(`\n⚠️  No direction folders found.`));
         return;
     }
 
-    console.log(chalk.bold(`\n📁 Available Folders in ${mode.toUpperCase()}:`));
+    console.log(chalk.bold(`\n📁 Available folders:`));
     folders.forEach((folder, index) => {
         console.log(` ${index + 1}) ${chalk.bold(folder.folder)} ${chalk.dim(`(${folder.bridgeName})`)}`);
     });
@@ -750,12 +749,12 @@ async function recomputeSpecificFolderMetrics(rl: readline.Interface): Promise<v
             const selected = folders[choice - 1];
             console.log(chalk.cyan(`\n🔄 Recomputing metrics for: ${selected.folder}`));
 
-            const summary = recomputeDirectionMetrics(mode, selected.bridgeName, selected.direction);
+            const summary = recomputeDirectionMetrics(selected.bridgeName, selected.direction);
 
             if (summary) {
                 console.log(chalk.green(`\n✅ Successfully recomputed metrics for ${selected.folder}`));
-                console.log(chalk.dim(`   JSON: data/results/${mode}/${selected.folder}/${selected.bridgeName}_${selected.direction}_aggregated_metrics.json`));
-                console.log(chalk.dim(`   CSV:  data/results/${mode}/${selected.folder}/${selected.bridgeName}_${selected.direction}_summary.csv`));
+                console.log(chalk.dim(`   JSON: data/results/${selected.folder}/${selected.bridgeName}_${selected.direction}_aggregated_metrics.json`));
+                console.log(chalk.dim(`   CSV:  data/results/${selected.folder}/${selected.bridgeName}_${selected.direction}_summary.csv`));
 
                 // Display computed metrics
                 console.log(chalk.bold('\n📊 Computed Metrics Summary:'));
@@ -801,7 +800,7 @@ async function recomputeSpecificFolderMetrics(rl: readline.Interface): Promise<v
  */
 async function recomputeAllMetrics(): Promise<void> {
     console.log(chalk.cyan('\n🔄 Recomputing all_metrics.csv from all batch folders...'));
-    console.log(chalk.dim('   Scanning all modes and directions (excluding deprecated folders)...\n'));
+    console.log(chalk.dim('   Scanning all directions (excluding deprecated folders)...\n'));
 
     const result = recomputeAllMetricsCsv();
 
@@ -811,7 +810,6 @@ async function recomputeAllMetrics(): Promise<void> {
 
         console.log(chalk.bold('\n📊 Scan Results:'));
         console.log(chalk.dim('─'.repeat(60)));
-        console.log(`   Modes scanned:        ${chalk.yellow(result.stats.modes)}`);
         console.log(`   Direction folders:    ${chalk.yellow(result.stats.directions)}`);
         console.log(`   Batch folders:        ${chalk.yellow(result.stats.batches)}`);
         console.log(`   Metrics processed:    ${chalk.green(result.count)}`);

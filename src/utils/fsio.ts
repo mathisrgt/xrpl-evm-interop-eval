@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { RunConfig, RunRecord, NetworkDirection, RunContext, NetworkMode } from "../types";
+import type { RunConfig, RunRecord, NetworkDirection, RunContext } from "../types";
 import type { MetricsReport, MetricsSummary } from "./metrics";
 
 export interface SavePaths {
@@ -12,9 +12,9 @@ export interface SavePaths {
   allCsv: string;
 }
 
-export function makePaths(batchId: string, direction: NetworkDirection, mode: NetworkMode, bridgeName: string): SavePaths {
-  // Create folder structure: data/results/{mode}/{bridgeName}_{direction}/{batchId}
-  const modeFolder = path.join("data", "results", mode);
+export function makePaths(batchId: string, direction: NetworkDirection, bridgeName: string): SavePaths {
+  // Create folder structure: data/results/{bridgeName}_{direction}/{batchId}
+  const modeFolder = path.join("data", "results");
   const directionFolder = path.join(modeFolder, `${bridgeName}_${direction}`);
   const dir = path.join(directionFolder, batchId);
 
@@ -125,7 +125,6 @@ export function summaryToCsvRow(
 ): Record<string, string | number> {
   return {
     timestampIso: s.timestampIso,
-    mode: cfg.networks.mode,
     tag: s.tag,
     bridgeName: s.bridgeName,
     direction: s.direction,
@@ -207,8 +206,8 @@ export const SUMMARY_CSV_HEADERS: string[] = [
 /**
  * Read all batch metrics from a direction+mode folder and compute aggregate statistics
  */
-export function computeDirectionSummary(direction: NetworkDirection, mode: NetworkMode, bridgeName: string): MetricsSummary | null {
-  const directionFolder = path.join("data", "results", mode, `${bridgeName}_${direction}`);
+export function computeDirectionSummary(direction: NetworkDirection, bridgeName: string): MetricsSummary | null {
+  const directionFolder = path.join("data", "results", `${bridgeName}_${direction}`);
   
   if (!fs.existsSync(directionFolder)) {
     return null;
@@ -297,7 +296,7 @@ export function computeDirectionSummary(direction: NetworkDirection, mode: Netwo
 
   const aggregatedSummary: MetricsSummary = {
     timestampIso: new Date().toISOString(),
-    tag: `${mode}_${bridgeName}_${direction}_aggregated`,
+    tag: `${bridgeName}_${direction}_aggregated`,
     bridgeName,
     direction,
     transferAmount: allSummaries[0]?.transferAmount || 0,
@@ -352,7 +351,7 @@ export function saveBatchArtifacts(
   records: RunRecord[],
   report: MetricsReport
 ): SavePaths {
-  const paths = makePaths(batchId, cfg.direction, cfg.networks.mode, cfg.bridgeName);
+  const paths = makePaths(batchId, cfg.direction, cfg.bridgeName);
   const xrplAddress = ctx.cache.xrpl?.wallet.address!;
   const evmAddress = ctx.cache.evm?.account.address!;
 
@@ -378,9 +377,9 @@ export function saveBatchArtifacts(
   
   appendCsvRow(paths.allCsv, SUMMARY_CSV_HEADERS, row);
 
-  const directionSummary = computeDirectionSummary(cfg.direction, cfg.networks.mode, cfg.bridgeName);
+  const directionSummary = computeDirectionSummary(cfg.direction, cfg.bridgeName);
   if (directionSummary) {
-    const directionFolder = path.join("data", "results", cfg.networks.mode, `${cfg.bridgeName}_${cfg.direction}`);
+    const directionFolder = path.join("data", "results", `${cfg.bridgeName}_${cfg.direction}`);
     const directionSummaryFile = path.join(directionFolder, `${cfg.bridgeName}_${cfg.direction}_aggregated_metrics.json`);
     writeJsonAtomic(directionSummaryFile, {
       summary: directionSummary,
@@ -396,8 +395,8 @@ export function saveBatchArtifacts(
 /**
  * Get all non-deprecated direction folders in a mode folder
  */
-export function getDirectionFolders(mode: NetworkMode): Array<{ folder: string; bridgeName: string; direction: NetworkDirection }> {
-  const modeFolder = path.join("data", "results", mode);
+export function getDirectionFolders(): Array<{ folder: string; bridgeName: string; direction: NetworkDirection }> {
+  const modeFolder = path.join("data", "results");
 
   if (!fs.existsSync(modeFolder)) {
     return [];
@@ -425,14 +424,14 @@ export function getDirectionFolders(mode: NetworkMode): Array<{ folder: string; 
 /**
  * Recompute aggregated metrics for a specific direction folder
  */
-export function recomputeDirectionMetrics(mode: NetworkMode, bridgeName: string, direction: NetworkDirection): MetricsSummary | null {
-  const directionSummary = computeDirectionSummary(direction, mode, bridgeName);
+export function recomputeDirectionMetrics(bridgeName: string, direction: NetworkDirection): MetricsSummary | null {
+  const directionSummary = computeDirectionSummary(direction, bridgeName);
 
   if (!directionSummary) {
     return null;
   }
 
-  const directionFolder = path.join("data", "results", mode, `${bridgeName}_${direction}`);
+  const directionFolder = path.join("data", "results", `${bridgeName}_${direction}`);
   const directionSummaryFile = path.join(directionFolder, `${bridgeName}_${direction}_aggregated_metrics.json`);
   const directionSummaryCsv = path.join(directionFolder, `${bridgeName}_${direction}_summary.csv`);
 
@@ -467,7 +466,6 @@ export function recomputeDirectionMetrics(mode: NetworkMode, bridgeName: string,
         const cfg: RunConfig = {
           tag: report.summary.tag,
           networks: {
-            mode: mode as NetworkMode,
             xrpl: {
               wsUrl: report.cfgEcho?.xrplUrl || '',
               gateway: report.cfgEcho?.xrplUrl || '',
@@ -566,7 +564,6 @@ export function recomputeAllMetricsCsv(): { count: number; stats: { modes: numbe
             const cfg: RunConfig = {
               tag: report.summary.tag,
               networks: {
-                mode: mode as NetworkMode,
                 xrpl: {
                   wsUrl: report.cfgEcho?.xrplUrl || '',
                   gateway: report.cfgEcho?.xrplUrl || '',

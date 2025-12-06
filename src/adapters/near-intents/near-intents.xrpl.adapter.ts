@@ -160,7 +160,7 @@ export const xrplAdapter: ChainAdapter = {
         // Start monitoring immediately (there's already a 10s wait between runs in index.ts)
         const observeStartTime = Date.now();
 
-        console.log(`🔍 Watching for XRP payments TO ${wallet.address} on XRPL`);
+        console.log(`🔍 Watching for XRP payments to ${wallet.address} on XRPL`);
         console.log(chalk.dim(`   Only accepting transactions after ${new Date(observeStartTime).toISOString()}`));
         if (depositAddress) {
             console.log(chalk.dim(`   Excluding payments FROM deposit address: ${depositAddress}`));

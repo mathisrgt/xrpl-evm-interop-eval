@@ -51,7 +51,6 @@ export interface MetricsReport {
   failureReasons: Record<string, number>;
   cfgEcho: {
     tag: string;
-    mode: string;
     direction: string;
     xrpAmount: number;
     runs: number;
@@ -191,7 +190,6 @@ export function computeMetrics(cfg: RunConfig, records: RunRecord[], batchDurati
     failureReasons,
     cfgEcho: {
       tag: cfg.tag,
-      mode: cfg.networks.mode,
       direction: cfg.direction,
       xrpAmount: cfg.xrpAmount,
       runs: cfg.runs,

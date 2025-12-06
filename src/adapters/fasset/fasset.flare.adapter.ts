@@ -395,7 +395,7 @@ export const flareAdapter: ChainAdapter = {
                             },
                             fromBlock: startBlock,
                             toBlock: toBlock,
-                            args: { to: account.address }, // INCOMING transfers TO our account
+                            args: { to: account.address }, // INCOMING transfers to our account
                         });
 
                         consecutiveErrors = 0;
