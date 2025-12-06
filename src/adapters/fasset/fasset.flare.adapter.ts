@@ -161,6 +161,20 @@ export const flareAdapter: ChainAdapter = {
 
         const timeoutMs = 10 * 60_000; // 10 minutes
 
+        // Get FXRP token decimals for correct amount formatting
+        let fxrpDecimals = 18;
+        try {
+            const decimalsResult = await publicClient.readContract({
+                address: FXRP_TOKEN_ADDRESS,
+                abi: erc20Abi,
+                functionName: 'decimals',
+            }) as number;
+            fxrpDecimals = decimalsResult;
+            console.log(chalk.dim(`   FXRP uses ${fxrpDecimals} decimals`));
+        } catch (error) {
+            console.log(chalk.dim(`   Using default 18 decimals for FXRP`));
+        }
+
         // Get starting block - start from current block to catch instant bridges
         // There's already a 10s wait between runs in index.ts, so no need to skip blocks
         const currentBlock = await publicClient.getBlockNumber();
@@ -217,9 +231,12 @@ export const flareAdapter: ChainAdapter = {
                             const spender = (log as any).args?.spender as string;
                             const value = (log as any).args?.value as bigint | undefined;
 
+                            // Format with correct decimals
+                            const approvalAmount = value ? (Number(value) / Math.pow(10, fxrpDecimals)).toFixed(6) : 'N/A';
+
                             console.log(chalk.green(`\n✅ Found FXRP approval transaction!`));
                             console.log(chalk.dim(`   Spender: ${spender}`));
-                            console.log(chalk.dim(`   Amount: ${value ? formatEther(value) : 'N/A'} FXRP`));
+                            console.log(chalk.dim(`   Amount: ${approvalAmount} FXRP`));
                             console.log(chalk.dim(`   Tx: ${log.transactionHash}`));
 
                             const receipt = await publicClient.getTransactionReceipt({ hash: log.transactionHash as Address });

@@ -172,10 +172,17 @@ export function logSubmit(ctx: RunContext, srcOutput: SourceOutput) {
         ? ctx.cache.xrpl?.depositAddress
         : ctx.cache.evm?.depositAddress;
 
-    // Display approval transaction if present (for ERC20 token bridges)
+    // Display approval/reserveCollateral transaction if present (for ERC20 token bridges)
     if (srcOutput.approvalTxHash) {
-        console.log(`🔓 ${chainName} approval transaction`);
-        console.log(`Hash: ${formatExplorerLink(srcOutput.approvalTxHash, 'tx', sourceChain, ctx.cfg.direction)}`);
+        // For FAsset bridges, this is the reserveCollateral transaction on Flare
+        const isFasset = bridgeType === 'fasset';
+        const txType = isFasset ? 'reserveCollateral transaction' : 'approval transaction';
+        const txChain = isFasset ? 'Flare' : chainName;
+
+        console.log(`🔓 ${txChain} ${txType}`);
+        // For FAsset, always use 'evm' chain to get Flare explorer link
+        const approvalChain: 'xrpl' | 'evm' | 'near-intents' | 'axelar' = isFasset ? 'evm' : sourceChain;
+        console.log(`Hash: ${formatExplorerLink(srcOutput.approvalTxHash, 'tx', approvalChain, ctx.cfg.direction)}`);
         if (srcOutput.approvalFee) {
             console.log(`Fee: ${chalk.yellow(srcOutput.approvalFee.toFixed(6))} FLR`);
         }
@@ -205,6 +212,23 @@ export function logObserve(ctx: RunContext, output: TargetOutput): void {
     const depositAddress = targetChain === 'xrpl'
         ? ctx.cache.xrpl?.depositAddress
         : ctx.cache.evm?.depositAddress;
+
+    // Display approval/reserveCollateral transaction if present (for ERC20 token bridges)
+    if (output.approvalTxHash) {
+        // For FAsset bridges, this is the reserveCollateral transaction on Flare
+        const isFasset = bridgeType === 'fasset';
+        const txType = isFasset ? 'reserveCollateral transaction' : 'approval transaction';
+        const txChain = isFasset ? 'Flare' : chainName;
+
+        console.log(`\n🔓 ${txChain} ${txType}`);
+        // For FAsset, always use 'evm' chain to get Flare explorer link
+        const approvalChain: 'xrpl' | 'evm' | 'near-intents' | 'axelar' = isFasset ? 'evm' : targetChain;
+        console.log(`Hash: ${formatExplorerLink(output.approvalTxHash, 'tx', approvalChain, ctx.cfg.direction)}`);
+        if (output.approvalFee) {
+            console.log(`Fee: ${chalk.yellow(output.approvalFee.toFixed(6))} FLR`);
+        }
+        console.log('');
+    }
 
     console.log(`\n✅ ${chainName} transfer received`);
     console.log(`Amount: ${amount}`);
