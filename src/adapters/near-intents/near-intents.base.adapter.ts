@@ -196,6 +196,7 @@ export const baseAdapter: ChainAdapter = {
 
         const depositAddress = quote.quote?.depositAddress;
         ctx.cache.evm.depositAddress = depositAddress;
+        ctx.txs.depositAddress = depositAddress; // Save for explorer URL generation
 
         console.log(`\n✅ Near Intents Quote Received:`);
         console.log(`   Deposit Address: ${depositAddress}`);

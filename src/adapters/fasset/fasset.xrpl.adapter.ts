@@ -66,6 +66,8 @@ export const xrplAdapter: ChainAdapter = {
         console.log(chalk.cyan('═'.repeat(60)));
         console.log(chalk.yellow(`Please send ${ctx.cfg.xrpAmount} XRP from your wallet to the FAsset deposit address`));
         console.log(chalk.dim(`Your XRPL address: ${wallet.address}`));
+        console.log('');
+        console.log(chalk.bold.cyan('🔗 Use FSwap to bridge: ') + chalk.blue.underline('https://fswap.luminite.app/'));
         console.log(chalk.cyan('═'.repeat(60)));
         console.log(chalk.cyan(`🔍 Watching for OUTGOING XRP payment from ${wallet.address}...`));
         console.log(chalk.dim(`   Waiting for payment ≥ ${ctx.cfg.xrpAmount} XRP`));

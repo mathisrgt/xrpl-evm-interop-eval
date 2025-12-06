@@ -13,6 +13,10 @@ export interface SourceOutput {
     // USD values (computed at transaction time)
     amountUsd?: number; // USD value of xrpAmount
     txFeeUsd?: number;  // USD value of txFee
+    // Approval transaction (for ERC20 token bridges like FAsset)
+    approvalFee?: number; // Approval transaction fee in native currency (e.g., FLR)
+    approvalFeeUsd?: number; // USD value of approval fee
+    approvalTxHash?: string; // Hash of the approval transaction
 }
 
 /** Output from the target chain after a transfer is finalized. */
@@ -126,6 +130,7 @@ export interface RunTxs {
     sourceTxHash?: string;
     targetTxHash?: string;
     bridgeMessageId?: string;
+    depositAddress?: string; // For near-intents and other bridges that use deposit addresses
 }
 
 /** Mutable runtime state shared across phases (NOT for publishing). */

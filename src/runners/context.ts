@@ -106,11 +106,12 @@ export async function createRunRecord(
 
     // Calculate native currency costs
     // For cross-currency bridges (like Near Intents), we can only calculate fees in USD
-    const sourceFee = srcOutput.txFee;
+    // Include approval fee if present (for ERC20 token bridges like FAsset)
+    const sourceFee = srcOutput.txFee + (srcOutput.approvalFee || 0);
     const targetFee = trgOutput.txFee;
     const bridgeFee = (isFasset || isCrossCurrency) ? null : (srcOutput.xrpAmount - trgOutput.xrpAmount - gasRefund);
-    const totalBridgeCost = (isFasset || isCrossCurrency) ? null : (srcOutput.xrpAmount + srcOutput.txFee - gasRefund - trgOutput.xrpAmount);
-    const totalCost = (isFasset || isCrossCurrency) ? null : (srcOutput.xrpAmount + srcOutput.txFee - gasRefund);
+    const totalBridgeCost = (isFasset || isCrossCurrency) ? null : (srcOutput.xrpAmount + sourceFee - gasRefund - trgOutput.xrpAmount);
+    const totalCost = (isFasset || isCrossCurrency) ? null : (srcOutput.xrpAmount + sourceFee - gasRefund);
 
     // Convert all costs to USD using prices at transaction time
     // Use the USD values already in the output if available, otherwise convert
@@ -147,9 +148,31 @@ export async function createRunRecord(
     };
 
     // Convert all costs to USD using prices at transaction time
+    // For approval fee, convert separately if not already in USD
+    let approvalFeeUsd: number | null = null;
+    if (srcOutput.approvalFee) {
+        // Approval fee is typically in the native chain currency (e.g., FLR for Flare)
+        // For Flare, currency would be 'FLR', so we need to specify that
+        const approvalCurrency = 'FLR'; // Approval always pays in native token
+        approvalFeeUsd = srcOutput.approvalFeeUsd ?? await convertWithRetry(
+            srcOutput.approvalFee,
+            approvalCurrency,
+            srcOutput.submittedAt,
+            'approval transaction fee'
+        );
+    }
+
+    // Source fee includes both transaction fee and approval fee
     sourceFeeUsd = srcOutput.txFeeUsd ?? (
-        srcOutput.currency ? await convertWithRetry(sourceFee, srcOutput.currency, srcOutput.submittedAt, 'source transaction fee') : null
+        srcOutput.currency ? await convertWithRetry(srcOutput.txFee, srcOutput.currency, srcOutput.submittedAt, 'source transaction fee') : null
     );
+
+    // Add approval fee in USD if present
+    if (sourceFeeUsd !== null && approvalFeeUsd !== null) {
+        sourceFeeUsd += approvalFeeUsd;
+    } else if (approvalFeeUsd !== null) {
+        sourceFeeUsd = approvalFeeUsd;
+    }
 
     targetFeeUsd = trgOutput.txFeeUsd ?? (
         trgOutput.currency ? await convertWithRetry(targetFee, trgOutput.currency, trgOutput.finalizedAt, 'target transaction fee') : null

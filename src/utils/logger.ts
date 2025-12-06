@@ -13,13 +13,16 @@ import { mainnet } from "viem/chains";
 /**
  * Get explorer URL for a transaction hash or address
  */
-function getExplorerUrl(value: string, type: 'tx' | 'address', chain: 'xrpl' | 'evm' | 'near-intents' | 'axelar', direction?: NetworkDirection): string {
+function getExplorerUrl(value: string, type: 'tx' | 'address', chain: 'xrpl' | 'evm' | 'near-intents' | 'axelar', direction?: NetworkDirection, depositAddress?: string): string {
     // Determine which chain/bridge is being used
     if (chain === 'near-intents') {
-        // Near Intents uses deposit addresses
-        if (type === 'address') {
+        // Near Intents uses deposit addresses instead of transaction hashes
+        if (type === 'tx' && depositAddress) {
+            return `https://explorer.near-intents.org/transactions/${depositAddress}`;
+        } else if (type === 'address') {
             return `https://explorer.near-intents.org/transactions/${value}`;
         }
+        // Fallback to value if no deposit address provided
         return `https://explorer.near-intents.org/transactions/${value}`;
     } else if (chain === 'axelar') {
         // Axelar uses axelarscan for GMP transactions
@@ -54,8 +57,8 @@ function getExplorerUrl(value: string, type: 'tx' | 'address', chain: 'xrpl' | '
 /**
  * Format a clickable explorer link
  */
-function formatExplorerLink(value: string, type: 'tx' | 'address', chain: 'xrpl' | 'evm' | 'near-intents' | 'axelar', direction?: NetworkDirection): string {
-    const url = getExplorerUrl(value, type, chain, direction);
+function formatExplorerLink(value: string, type: 'tx' | 'address', chain: 'xrpl' | 'evm' | 'near-intents' | 'axelar', direction?: NetworkDirection, depositAddress?: string): string {
+    const url = getExplorerUrl(value, type, chain, direction, depositAddress);
     return `${chalk.cyan(value)}\n   ${chalk.dim('Explorer:')} ${chalk.blue.underline(url)}`;
 }
 
@@ -164,9 +167,24 @@ export function logSubmit(ctx: RunContext, srcOutput: SourceOutput) {
         explorerChain = 'axelar';
     }
 
+    // Get deposit address for near-intents explorer
+    const depositAddress = sourceChain === 'xrpl'
+        ? ctx.cache.xrpl?.depositAddress
+        : ctx.cache.evm?.depositAddress;
+
+    // Display approval transaction if present (for ERC20 token bridges)
+    if (srcOutput.approvalTxHash) {
+        console.log(`🔓 ${chainName} approval transaction`);
+        console.log(`Hash: ${formatExplorerLink(srcOutput.approvalTxHash, 'tx', sourceChain, ctx.cfg.direction)}`);
+        if (srcOutput.approvalFee) {
+            console.log(`Fee: ${chalk.yellow(srcOutput.approvalFee.toFixed(6))} FLR`);
+        }
+        console.log('');
+    }
+
     console.log(`📤 ${chainName} transaction submitted`);
     console.log(`Amount: ${amount}`);
-    console.log(`Hash: ${formatExplorerLink(srcOutput.txHash, 'tx', explorerChain, ctx.cfg.direction)}`);
+    console.log(`Hash: ${formatExplorerLink(srcOutput.txHash, 'tx', explorerChain, ctx.cfg.direction, depositAddress)}`);
 }
 
 export function logObserve(ctx: RunContext, output: TargetOutput): void {
@@ -174,9 +192,23 @@ export function logObserve(ctx: RunContext, output: TargetOutput): void {
     const chainName = chalk.bold(targetChain.toUpperCase());
     const amount = formatAmount(output.xrpAmount, output.currency || 'XRP');
 
+    // Determine the bridge type from the config
+    const bridgeType = ctx.cfg.bridgeName;
+    let explorerChain: 'xrpl' | 'evm' | 'near-intents' | 'axelar' = targetChain;
+    if (bridgeType === 'near-intents') {
+        explorerChain = 'near-intents';
+    } else if (bridgeType === 'axelar') {
+        explorerChain = 'axelar';
+    }
+
+    // Get deposit address for near-intents explorer
+    const depositAddress = targetChain === 'xrpl'
+        ? ctx.cache.xrpl?.depositAddress
+        : ctx.cache.evm?.depositAddress;
+
     console.log(`\n✅ ${chainName} transfer received`);
     console.log(`Amount: ${amount}`);
-    console.log(`Hash: ${formatExplorerLink(output.txHash, 'tx', targetChain, ctx.cfg.direction)}`);
+    console.log(`Hash: ${formatExplorerLink(output.txHash, 'tx', explorerChain, ctx.cfg.direction, depositAddress)}`);
 
     if (ctx.ts.t3_finalized && ctx.ts.t1_submit) {
         const elapsed = formatElapsedMs(ctx.ts.t3_finalized - ctx.ts.t1_submit, { pad: true });
@@ -237,11 +269,11 @@ export function logRecord(record: RunRecord): void {
 
     if (txs.sourceTxHash && txs.sourceTxHash !== 'N/A') {
         console.log(`${chalk.bold('Source Tx')}:`);
-        console.log(`   ${formatExplorerLink(txs.sourceTxHash, 'tx', explorerChain, record.cfg.direction)}`);
+        console.log(`   ${formatExplorerLink(txs.sourceTxHash, 'tx', explorerChain, record.cfg.direction, txs.depositAddress)}`);
     }
     if (txs.targetTxHash && txs.targetTxHash !== 'N/A') {
         console.log(`${chalk.bold('Target Tx')}:`);
-        console.log(`   ${formatExplorerLink(txs.targetTxHash, 'tx', targetChain, record.cfg.direction)}`);
+        console.log(`   ${formatExplorerLink(txs.targetTxHash, 'tx', targetChain, record.cfg.direction, txs.depositAddress)}`);
     }
     if (txs.bridgeMessageId) {
         console.log(`${chalk.bold('Bridge Message ID')}: ${chalk.cyan(txs.bridgeMessageId)}`);
@@ -564,13 +596,36 @@ async function displayWalletInfo(): Promise<void> {
 
             // Get FXRP token balance
             const FXRP_TOKEN_ADDRESS = '0xAd552A648C74D49E10027AB8a618A3ad4901c5bE' as const;
+            const erc20Abi = [
+                { name: 'balanceOf', type: 'function', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ name: 'balance', type: 'uint256' }] },
+                { name: 'decimals', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint8' }] }
+            ] as const;
+
+            // Get FXRP decimals
+            let fxrpDecimals = 18;
+            try {
+                const decimalsResult = await publicClient.readContract({
+                    address: FXRP_TOKEN_ADDRESS,
+                    abi: erc20Abi,
+                    functionName: 'decimals',
+                });
+                fxrpDecimals = Number(decimalsResult);
+            } catch (err) {
+                // If decimals fails, assume 18 (standard)
+                fxrpDecimals = 18;
+            }
+
+            // Get FXRP balance
             const fxrpBal = await publicClient.readContract({
                 address: FXRP_TOKEN_ADDRESS,
-                abi: [{ name: 'balanceOf', type: 'function', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ name: 'balance', type: 'uint256' }] }],
+                abi: erc20Abi,
                 functionName: 'balanceOf',
                 args: [evmAccount.address as `0x${string}`]
             });
-            fxrpBalance = `${parseFloat(formatEther(fxrpBal as bigint)).toFixed(4)} FXRP`;
+
+            // Convert using correct decimals
+            const fxrpBalanceNumber = Number(fxrpBal as bigint) / Math.pow(10, fxrpDecimals);
+            fxrpBalance = `${fxrpBalanceNumber.toFixed(4)} FXRP`;
         } catch (err) {
             flrBalance = chalk.red('Error');
             fxrpBalance = chalk.red('Error');
@@ -626,32 +681,12 @@ async function displayWalletInfo(): Promise<void> {
 }
 
 /**
- * Display wallet addresses and balances with confirmation prompt
- * Returns true if user confirms, false if user cancels
+ * Display wallet addresses and balances
+ * Returns true (always proceeds)
  */
 export async function displayWalletInfoAndConfirm(): Promise<boolean> {
     await displayWalletInfo();
-
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout
-    });
-
-    try {
-        const answer = await new Promise<string>((resolve) => {
-            rl.question(chalk.yellow('\nContinue with these addresses? (Y/n): '), (ans) => {
-                resolve(ans.trim().toLowerCase());
-            });
-        });
-
-        if (answer === 'n' || answer === 'no') {
-            return false;
-        }
-        
-        return true;
-    } finally {
-        rl.close();
-    }
+    return true;
 }
 
 /**

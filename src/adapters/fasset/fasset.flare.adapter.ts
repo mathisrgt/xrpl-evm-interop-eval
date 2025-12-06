@@ -87,14 +87,29 @@ export const flareAdapter: ChainAdapter = {
         // For Flare, we need FXRP for the transfer + FLR for gas
         const fxrpAmount = ctx.cfg.xrpAmount; // FXRP amount needed
 
+        // Get FXRP token decimals first
+        let decimals: number;
+        try {
+            const decimalsResult = await publicClient.readContract({
+                address: FXRP_TOKEN_ADDRESS,
+                abi: erc20Abi,
+                functionName: 'decimals',
+            }) as number;
+            decimals = decimalsResult;
+        } catch (error) {
+            decimals = 18;
+        }
+
         // Get FXRP token balance
         const fxrpBal = await publicClient.readContract({
             address: FXRP_TOKEN_ADDRESS,
             abi: erc20Abi,
             functionName: 'balanceOf',
             args: [account.address as `0x${string}`]
-        });
-        const currentFxrpBalance = Number(formatEther(fxrpBal as bigint));
+        }) as bigint;
+
+        // Convert balance using the correct decimals
+        const currentFxrpBalance = Number(fxrpBal) / Math.pow(10, decimals);
 
         // Get FLR balance for gas
         const flrBalWei = await publicClient.getBalance({ address: account.address as `0x${string}` });
@@ -140,6 +155,8 @@ export const flareAdapter: ChainAdapter = {
         console.log(chalk.yellow(`Please send ${ctx.cfg.xrpAmount} FXRP from your wallet to the FAsset redemption address`));
         console.log(chalk.dim(`Your Flare address: ${account.address}`));
         console.log(chalk.dim(`FXRP Token: ${FXRP_TOKEN_ADDRESS}`));
+        console.log('');
+        console.log(chalk.bold.cyan('🔗 Use FSwap to bridge: ') + chalk.blue.underline('https://fswap.luminite.app/'));
         console.log(chalk.cyan('═'.repeat(60)));
 
         const timeoutMs = 10 * 60_000; // 10 minutes
@@ -149,9 +166,95 @@ export const flareAdapter: ChainAdapter = {
         const currentBlock = await publicClient.getBlockNumber();
         const startBlock = currentBlock;
 
-        console.log(chalk.cyan(`🔍 Watching for OUTGOING FXRP transfer from ${account.address}...`));
-        console.log(chalk.dim(`   Starting from block ${startBlock} to catch instant bridges`));
-        console.log(chalk.dim(`   Waiting for transfer ≥ ${ctx.cfg.xrpAmount} FXRP`));
+        console.log(chalk.cyan(`🔍 Step 1: Watching for FXRP approval transaction from ${account.address}...`));
+        console.log(chalk.dim(`   Starting from block ${startBlock}`));
+
+        // First, wait for approval transaction
+        let approvalFee = 0;
+        let approvalFeeWei = 0n;
+        let approvalTxHash: string | undefined;
+
+        try {
+            const approvalResult = await new Promise<{ fee: number; feeWei: bigint; txHash: string }>((resolve, reject) => {
+                let finished = false;
+
+                const approvalTimeoutId = setTimeout(() => {
+                    if (!finished) {
+                        finished = true;
+                        clearInterval(pollInterval);
+                        reject(new Error("Timeout: No FXRP approval detected within 10 minutes"));
+                    }
+                }, timeoutMs);
+
+                const checkForApprovals = async () => {
+                    if (finished) return;
+
+                    try {
+                        const toBlock = await publicClient.getBlockNumber();
+
+                        const approvalLogs = await getLogsInChunks(publicClient, {
+                            address: FXRP_TOKEN_ADDRESS,
+                            event: {
+                                type: "event",
+                                name: "Approval",
+                                inputs: [
+                                    { indexed: true, name: "owner", type: "address" },
+                                    { indexed: true, name: "spender", type: "address" },
+                                    { indexed: false, name: "value", type: "uint256" },
+                                ],
+                            },
+                            fromBlock: startBlock,
+                            toBlock: toBlock,
+                            args: { owner: account.address },
+                        });
+
+                        if (approvalLogs.length > 0 && !finished) {
+                            finished = true;
+                            clearInterval(pollInterval);
+                            clearTimeout(approvalTimeoutId);
+
+                            const log = approvalLogs[approvalLogs.length - 1]; // Take the most recent
+                            const spender = (log as any).args?.spender as string;
+                            const value = (log as any).args?.value as bigint | undefined;
+
+                            console.log(chalk.green(`\n✅ Found FXRP approval transaction!`));
+                            console.log(chalk.dim(`   Spender: ${spender}`));
+                            console.log(chalk.dim(`   Amount: ${value ? formatEther(value) : 'N/A'} FXRP`));
+                            console.log(chalk.dim(`   Tx: ${log.transactionHash}`));
+
+                            const receipt = await publicClient.getTransactionReceipt({ hash: log.transactionHash as Address });
+                            const gasUsed = receipt.gasUsed;
+                            const effectiveGasPrice = receipt.effectiveGasPrice || 0n;
+                            const gasFeeWei = gasUsed * effectiveGasPrice;
+                            const fee = Number(formatEther(gasFeeWei));
+
+                            console.log(chalk.dim(`   Approval fee: ${fee.toFixed(6)} FLR`));
+
+                            resolve({ fee, feeWei: gasFeeWei, txHash: log.transactionHash as string });
+                        }
+                    } catch (err: any) {
+                        // Ignore errors during polling, will retry
+                    }
+                };
+
+                // Poll every 3 seconds
+                const pollInterval = setInterval(checkForApprovals, 3000);
+
+                // Check immediately (don't wait 3 seconds for first check)
+                checkForApprovals();
+            });
+
+            approvalFee = approvalResult.fee;
+            approvalFeeWei = approvalResult.feeWei;
+            approvalTxHash = approvalResult.txHash;
+
+            console.log(chalk.cyan(`\n🔍 Step 2: Watching for FXRP transfer from ${account.address}...`));
+            console.log(chalk.dim(`   Waiting for transfer ≥ ${ctx.cfg.xrpAmount} FXRP`));
+        } catch (err) {
+            console.log(chalk.yellow(`\n⚠️  No approval transaction detected, proceeding to watch for transfer...`));
+            console.log(chalk.cyan(`🔍 Watching for FXRP transfer from ${account.address}...`));
+            console.log(chalk.dim(`   Waiting for transfer ≥ ${ctx.cfg.xrpAmount} FXRP`));
+        }
 
         return await new Promise<SourceOutput>((resolve, reject) => {
             let finished = false;
@@ -272,6 +375,8 @@ export const flareAdapter: ChainAdapter = {
                                 submittedAt,
                                 txFee,
                                 currency: 'XRP',
+                                approvalFee: approvalFee > 0 ? approvalFee : undefined,
+                                approvalTxHash: approvalTxHash,
                             });
                         }
 

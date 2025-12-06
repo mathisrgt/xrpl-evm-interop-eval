@@ -63,17 +63,39 @@ function ensureDir(filePath: string) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
 }
 
+/**
+ * JSON replacer function that prevents scientific notation
+ * Converts numbers to fixed decimal notation (e.g., 1e-7 -> 0.0000001)
+ */
+function jsonReplacer(_key: string, value: any): any {
+  if (typeof value === 'number') {
+    // Check if the number would be serialized in scientific notation
+    const str = value.toString();
+    if (str.includes('e') || str.includes('E')) {
+      // Use toFixed with enough decimal places to represent the number
+      // Find the exponent to determine decimal places needed
+      const match = str.match(/e([+-]?\d+)/i);
+      if (match) {
+        const exponent = parseInt(match[1], 10);
+        const decimalPlaces = exponent < 0 ? Math.abs(exponent) + 10 : 10;
+        return parseFloat(value.toFixed(decimalPlaces));
+      }
+    }
+  }
+  return value;
+}
+
 /** Append one object as JSONL (one line per record). */
 export function appendJsonl(file: string, obj: unknown) {
   ensureDir(file);
-  fs.appendFileSync(file, JSON.stringify(obj) + "\n");
+  fs.appendFileSync(file, JSON.stringify(obj, jsonReplacer) + "\n");
 }
 
 /** Write pretty JSON atomically (tmp + rename). */
 export function writeJsonAtomic(file: string, obj: unknown) {
   ensureDir(file);
   const tmp = file + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(obj, null, 2));
+  fs.writeFileSync(tmp, JSON.stringify(obj, jsonReplacer, 2));
   fs.renameSync(tmp, file);
 }
 

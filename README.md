@@ -150,6 +150,34 @@ Each run follows the same bridging flow:
    - Check `data/results/{direction}/{direction}_aggregated_metrics.json` for combined statistics across all batches in that direction.
    - Open `data/results/{direction}/{direction}_summary.csv` to see chronological batch metrics.
 
+## 🔄 Batch Testing All Bridges
+
+For comprehensive testing, you can run all bridge directions sequentially using the batch test script:
+
+```bash
+# Run all bridges with default settings (5 XRP, 1 run per direction)
+npm run test:all
+
+# Run all bridges with custom amount (3 XRP, 1 run)
+npm run test:all 3
+
+# Run all bridges with custom amount and runs (3 XRP, 2 runs)
+npm run test:all 3 2
+
+# Or run the script directly
+./scripts/run-all-bridges.sh 3 2
+```
+
+**What gets tested:**
+1. XRPL → Flare (FAsset - fixed: 10 XRP, 1 run)
+2. Flare → XRPL (FAsset - fixed: 10 FXRP, 1 run)
+3. XRPL → XRPL-EVM (Axelar - custom amount & runs)
+4. XRPL-EVM → XRPL (Axelar - custom amount & runs)
+5. XRPL → Base (Near Intents - custom amount & runs)
+6. Base → XRPL (Near Intents - custom amount & runs)
+
+**Note:** FAsset bridges use fixed configuration (10 XRP/FXRP, 1 run). See `scripts/README.md` for more details.
+
 ## 📈 Analyzing Results
 
 ### Single batch analysis
