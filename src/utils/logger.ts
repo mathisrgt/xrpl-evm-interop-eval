@@ -774,12 +774,9 @@ async function recomputeSpecificFolderMetrics(rl: readline.Interface): Promise<v
                     console.log(`   Min/Max:          ${chalk.dim((summary.latency.minMs ?? 0).toFixed(2))} / ${chalk.dim((summary.latency.maxMs ?? 0).toFixed(2))} ms`);
                 }
 
-                if (summary.costs?.meanTotalUsd !== null) {
+                if (summary.costs?.meanBridgeUsd !== null) {
                     console.log(`\n   ${chalk.bold('Costs (USD):')}`);
-                    console.log(`   Mean Total:       ${chalk.yellow('$' + (summary.costs.meanTotalUsd).toFixed(4))}`);
-                    if (summary.costs.meanBridgeUsd !== null) {
-                        console.log(`   Mean Bridge Fee:  ${chalk.yellow('$' + (summary.costs.meanBridgeUsd).toFixed(4))}`);
-                    }
+                    console.log(`   Mean Bridge Fee:  ${chalk.yellow('$' + (summary.costs.meanBridgeUsd).toFixed(4))}`);
                     console.log(`   Mean Source Fee:  ${chalk.dim('$' + (summary.costs.meanSourceFeeUsd ?? 0).toFixed(4))}`);
                     console.log(`   Mean Target Fee:  ${chalk.dim('$' + (summary.costs.meanTargetFeeUsd ?? 0).toFixed(4))}`);
                 }
@@ -861,9 +858,8 @@ export function displayMetrics(metrics: MetricsSummary): void {
     } else {
         console.log(chalk.red("\n⚠️  No successful runs to analyze."));
     }
-    if (metrics.costs.meanTotalUsd !== null && metrics.costs.meanBridgeUsd !== null) {
+    if (metrics.costs.meanBridgeUsd !== null) {
         console.log(`\n${chalk.bold('Costs average (USD):')}`);
-        console.log(`  Total Cost:    ${chalk.yellow('$' + metrics.costs.meanTotalUsd.toFixed(4))}`);
         console.log(`  Bridge Fee:    ${chalk.yellow('$' + metrics.costs.meanBridgeUsd.toFixed(4))}`);
         if (metrics.costs.meanSourceFeeUsd !== null) {
             console.log(`  Source Fee:    ${chalk.yellow('$' + metrics.costs.meanSourceFeeUsd.toFixed(4))}`);

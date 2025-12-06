@@ -14,11 +14,6 @@ export interface LatencyStats {
 export interface CostsStats {
   n: number;
   // All cost stats are now in USD for unified metrics
-  meanTotalUsd: number | null;
-  minTotalUsd: number | null;
-  maxTotalUsd: number | null;
-  stdDevTotalUsd: number | null;
-
   meanBridgeUsd: number | null;
   meanSourceFeeUsd: number | null;
   meanTargetFeeUsd: number | null;
@@ -88,20 +83,6 @@ function e2eLatencyMs(r: RunRecord): number | null {
   return Math.max(0, t3 - t1);
 }
 
-/** Get total cost in USD - using USD values from RunCosts */
-function totalCostUsd(r: RunRecord): number | null {
-  const c = r.costs;
-  if (!c) return null;
-
-  // Use the USD values from RunCosts
-  if (typeof c.totalCostUsd === "number") return c.totalCostUsd;
-
-  // Fallback: sum individual USD fees if total not available
-  const parts = [c.bridgeFeeUsd, c.sourceFeeUsd, c.targetFeeUsd]
-    .filter((x): x is number => typeof x === "number");
-
-  return parts.length ? parts.reduce((s: number, x: number) => s + x, 0) : null;
-}
 
 export function computeMetrics(cfg: RunConfig, records: RunRecord[], batchDurationMs: number): MetricsReport {
   const successes = records.filter(r => r.success);
@@ -131,12 +112,6 @@ export function computeMetrics(cfg: RunConfig, records: RunRecord[], batchDurati
   };
 
   // Extract USD costs from RunCosts
-  const totalsUsd = successes
-    .map(totalCostUsd)
-    .filter((x): x is number => typeof x === "number");
-  const totalsSortedUsd = [...totalsUsd].sort(byNumberAsc);
-
-  // Use USD property names from RunCosts interface
   const bridgeArrUsd = successes
     .map(r => r.costs?.bridgeFeeUsd)
     .filter((x): x is number => typeof x === "number");
@@ -148,12 +123,7 @@ export function computeMetrics(cfg: RunConfig, records: RunRecord[], batchDurati
     .filter((x): x is number => typeof x === "number");
 
   const costStats: CostsStats = {
-    n: totalsUsd.length,
-    meanTotalUsd: mean(totalsUsd),
-    minTotalUsd: totalsUsd.length ? totalsSortedUsd[0] : null,
-    maxTotalUsd: totalsUsd.length ? totalsSortedUsd[totalsSortedUsd.length - 1] : null,
-    stdDevTotalUsd: stddev(totalsUsd),
-
+    n: bridgeArrUsd.length,
     meanBridgeUsd: mean(bridgeArrUsd),
     meanSourceFeeUsd: mean(sourceArrUsd),
     meanTargetFeeUsd: mean(targetArrUsd),

@@ -1,3 +1,4 @@
+import chalk from "chalk";
 import { GasRefundOutput, RunConfig, RunContext, RunRecord, SourceOutput, TargetOutput } from "../types";
 import { CleanupManager } from "../utils/cleanup";
 import { convertToUsd } from "../utils/price-converter";
@@ -189,12 +190,21 @@ export async function createRunRecord(
     // Validate for negative costs (data integrity check)
     const validateNegativeCost = async (costValue: number | null, costName: string, currency: string) => {
         if (costValue !== null && costValue < 0) {
+            // Accept small negative values < 1 USD without prompting
+            if (currency === 'USD' && Math.abs(costValue) < 1) {
+                console.log(chalk.dim(`   ℹ️  Small negative ${costName} detected (${costValue.toFixed(4)} ${currency}) - automatically accepted`));
+                return;
+            }
+
             const action = await askNegativeCostAction(costName, costValue, currency);
 
             if (action === 'ignore-run') {
                 throw new RunIgnoredException(`User chose to ignore run due to negative ${costName}: ${costValue} ${currency}`);
             } else if (action === 'abort-batch') {
                 throw new BatchAbortedException(`User chose to abort batch due to negative ${costName}: ${costValue} ${currency}`);
+            } else if (action === 'save-anyway') {
+                // User chose to save anyway, so we just continue
+                console.log(chalk.dim(`   ℹ️  Continuing with negative ${costName}: ${costValue} ${currency}`));
             }
         }
     };

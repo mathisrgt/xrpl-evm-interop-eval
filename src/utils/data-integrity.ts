@@ -4,7 +4,7 @@ import readline from "readline";
 /**
  * Data integrity issue actions
  */
-export type DataIntegrityAction = 'retry' | 'ignore-run' | 'abort-batch';
+export type DataIntegrityAction = 'retry' | 'ignore-run' | 'abort-batch' | 'save-anyway';
 
 /**
  * Ask user what to do when price conversion fails
@@ -62,7 +62,7 @@ export async function askPriceConversionAction(
 
 /**
  * Ask user what to do when negative costs are detected
- * Returns the user's choice: ignore-run or abort-batch
+ * Returns the user's choice: ignore-run, abort-batch, or save-anyway
  */
 export async function askNegativeCostAction(
     costType: string,
@@ -86,11 +86,12 @@ export async function askNegativeCostAction(
         console.log('');
         console.log(chalk.yellow('   1) Ignore this run (skip saving this run\'s data)'));
         console.log(chalk.red('   2) Abort batch (stop all runs and don\'t save anything)'));
+        console.log(chalk.cyan('   3) Save anyway (accept the negative value and continue)'));
         console.log('');
 
         while (true) {
             const answer = await new Promise<string>((resolve) => {
-                rl.question(chalk.bold('Enter your choice (1/2): '), (ans) => {
+                rl.question(chalk.bold('Enter your choice (1/2/3): '), (ans) => {
                     resolve(ans.trim());
                 });
             });
@@ -101,8 +102,11 @@ export async function askNegativeCostAction(
             } else if (answer === '2') {
                 console.log(chalk.red('\n🛑 Aborting batch (no data will be saved)'));
                 return 'abort-batch';
+            } else if (answer === '3') {
+                console.log(chalk.cyan('\n✓ Saving data anyway (negative value accepted)'));
+                return 'save-anyway';
             } else {
-                console.log(chalk.red('Invalid choice. Please enter 1 or 2.'));
+                console.log(chalk.red('Invalid choice. Please enter 1, 2, or 3.'));
             }
         }
     } finally {

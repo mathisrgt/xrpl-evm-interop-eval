@@ -146,10 +146,6 @@ export function summaryToCsvRow(
     latency_std_ms: s.latency.stdDevMs ?? "",
 
     cost_n: s.costs?.n ?? "",
-    cost_mean_total_usd: s.costs?.meanTotalUsd ?? "",
-    cost_min_total_usd: s.costs?.minTotalUsd ?? "",
-    cost_max_total_usd: s.costs?.maxTotalUsd ?? "",
-    cost_std_total_usd: s.costs?.stdDevTotalUsd ?? "",
     cost_mean_bridge_usd: s.costs?.meanBridgeUsd ?? "",
     cost_mean_source_fee_usd: s.costs?.meanSourceFeeUsd ?? "",
     cost_mean_target_fee_usd: s.costs?.meanTargetFeeUsd ?? "",
@@ -187,10 +183,6 @@ export const SUMMARY_CSV_HEADERS: string[] = [
   "latency_std_ms",
 
   "cost_n",
-  "cost_mean_total_usd",
-  "cost_min_total_usd",
-  "cost_max_total_usd",
-  "cost_std_total_usd",
   "cost_mean_bridge_usd",
   "cost_mean_source_fee_usd",
   "cost_mean_target_fee_usd",
@@ -247,7 +239,6 @@ export function computeDirectionSummary(direction: NetworkDirection, bridgeName:
   const successRate = totalRuns > 0 ? successCount / totalRuns : 0;
 
   const allLatencies: number[] = [];
-  const allCosts: number[] = [];
   const allBridgeCosts: number[] = [];
   const allSourceFees: number[] = [];
   const allTargetFees: number[] = [];
@@ -263,10 +254,9 @@ export function computeDirectionSummary(direction: NetworkDirection, bridgeName:
           if (record.success && record.timestamps.t1_submit && record.timestamps.t3_finalized) {
             allLatencies.push(record.timestamps.t3_finalized - record.timestamps.t1_submit);
 
-            if (record.costs.totalCost) allCosts.push(record.costs.totalCost);
-            if (record.costs.bridgeFee) allBridgeCosts.push(record.costs.bridgeFee);
-            if (record.costs.sourceFee) allSourceFees.push(record.costs.sourceFee);
-            if (record.costs.targetFee) allTargetFees.push(record.costs.targetFee);
+            if (record.costs.bridgeFeeUsd) allBridgeCosts.push(record.costs.bridgeFeeUsd);
+            if (record.costs.sourceFeeUsd) allSourceFees.push(record.costs.sourceFeeUsd);
+            if (record.costs.targetFeeUsd) allTargetFees.push(record.costs.targetFeeUsd);
           }
         } catch (err) {
           // Skip malformed lines
@@ -320,11 +310,7 @@ export function computeDirectionSummary(direction: NetworkDirection, bridgeName:
     },
 
     costs: {
-      n: allCosts.length,
-      meanTotalUsd: mean(allCosts),
-      minTotalUsd: allCosts.length ? Math.min(...allCosts) : null,
-      maxTotalUsd: allCosts.length ? Math.max(...allCosts) : null,
-      stdDevTotalUsd: stddev(allCosts),
+      n: allBridgeCosts.length,
       meanBridgeUsd: mean(allBridgeCosts),
       meanSourceFeeUsd: mean(allSourceFees),
       meanTargetFeeUsd: mean(allTargetFees),
