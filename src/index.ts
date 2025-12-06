@@ -105,9 +105,9 @@ async function main() {
             const runNumber = runIndex + 1;
             const separator = chalk.bold('═'.repeat(60));
 
-            // Add 10-second pause before each run (except the first) to avoid detecting previous run's transactions
+            // Add 30-second pause before each run (except the first) to avoid detecting previous run's transactions
             if (runIndex > 0) {
-                await waitWithCountdown(10000, "Waiting before next run to avoid transaction conflicts...");
+                await waitWithCountdown(30000, "Waiting before next run to avoid transaction conflicts...");
             }
 
             console.log(`\n${separator}`);

@@ -376,10 +376,6 @@ export const xrplAdapter: ChainAdapter = {
         const currentBlock = await publicClient.getBlockNumber();
         const startBlock = currentBlock;
 
-        console.log(chalk.cyan(`\n🔍 Step 1: Watching for reserveCollateral transaction on Flare from ${evmAccount.address}...`));
-        console.log(chalk.dim(`   Starting from block ${startBlock}`));
-        console.log(chalk.dim(`   Looking for AssetManager contract interaction`));
-
         // First, wait for reserveCollateral transaction on Flare EVM
         let reserveCollateralFee = 0;
         let reserveCollateralFeeWei = 0n;
@@ -471,13 +467,11 @@ export const xrplAdapter: ChainAdapter = {
             reserveCollateralFee = reserveResult.fee;
             reserveCollateralFeeWei = reserveResult.feeWei;
             reserveCollateralTxHash = reserveResult.txHash;
-
-            console.log(chalk.cyan(`\n🔍 Step 2: Watching for INCOMING XRP payment to ${wallet.address}...`));
-            console.log(chalk.dim(`   Waiting for incoming XRP payment on XRPL`));
         } catch (err) {
             console.log(chalk.yellow(`\n⚠️  No reserveCollateral transaction detected, proceeding to watch for XRP payment...`));
-            console.log(chalk.cyan(`🔍 Watching for INCOMING XRP payment to ${wallet.address}...`));
         }
+
+        console.log(chalk.cyan(`\n🔍 Watching for INCOMING XRP payment to ${wallet.address}...`));
 
         // Record when observation starts - only accept transactions AFTER this time
         // Start monitoring immediately (there's already a 10s wait between runs in index.ts)

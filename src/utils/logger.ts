@@ -174,9 +174,12 @@ export function logSubmit(ctx: RunContext, srcOutput: SourceOutput) {
 
     // Display approval/reserveCollateral transaction if present (for ERC20 token bridges)
     if (srcOutput.approvalTxHash) {
-        // For FAsset bridges, this is the reserveCollateral transaction on Flare
+        // For FAsset bridges: approval for Flare→XRPL, reserveCollateral for XRPL→Flare
         const isFasset = bridgeType === 'fasset';
-        const txType = isFasset ? 'reserveCollateral transaction' : 'approval transaction';
+        const isFlareToXrpl = ctx.cfg.direction === 'flare_to_xrpl';
+        const txType = isFasset
+            ? (isFlareToXrpl ? 'approval transaction' : 'reserveCollateral transaction')
+            : 'approval transaction';
         const txChain = isFasset ? 'Flare' : chainName;
 
         console.log(`🔓 ${txChain} ${txType}`);
@@ -215,9 +218,12 @@ export function logObserve(ctx: RunContext, output: TargetOutput): void {
 
     // Display approval/reserveCollateral transaction if present (for ERC20 token bridges)
     if (output.approvalTxHash) {
-        // For FAsset bridges, this is the reserveCollateral transaction on Flare
+        // For FAsset bridges: approval for Flare→XRPL, reserveCollateral for XRPL→Flare
         const isFasset = bridgeType === 'fasset';
-        const txType = isFasset ? 'reserveCollateral transaction' : 'approval transaction';
+        const isXrplToFlare = ctx.cfg.direction === 'xrpl_to_flare';
+        const txType = isFasset
+            ? (isXrplToFlare ? 'reserveCollateral transaction' : 'approval transaction')
+            : 'approval transaction';
         const txChain = isFasset ? 'Flare' : chainName;
 
         console.log(`\n🔓 ${txChain} ${txType}`);

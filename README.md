@@ -9,9 +9,9 @@ This repository provides a framework for evaluating **asset bridge performance**
 
 ## 🛠️ Features
 
-- **Reproducible experiments**  
-  Run standardized bridge experiments through abstracted function calls:  
-  `prepare → submit → observe → observeGasRefund`.
+- **Reproducible experiments**
+  Run standardized bridge experiments through abstracted function calls:
+  `prepare → submit → observe`.
 
 - **Modular blockchain support**  
   Extend the framework to new blockchains by simply:
@@ -92,12 +92,9 @@ For detailed information about metrics and file formats, see [ARTIFACT.md](./ART
 ## 📄 Experiment Steps
 Each run follows the same bridging flow:
 
-1. **Prepare** – Initialize wallet and client  
-2. **Submit** – Broadcast the transaction on the source blockchain  
-3. **Observe** – Detect and confirm the transaction on the target blockchain  
-4. **Finalize (Target)** – Record the received transaction on the target chain  
-5. **Observe Gas Refund** – Track the Axelar gas refund process  
-6. **Finalize (Source)** – Confirm refund settlement on the source blockchain 
+1. **Prepare** – Initialize wallet and client
+2. **Submit** – Broadcast the transaction on the source blockchain
+3. **Observe** – Detect and confirm the transaction on the target blockchain until finalization 
 
 ## 🚀 How to Run
 
