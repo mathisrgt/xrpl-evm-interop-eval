@@ -1,39 +1,38 @@
 {
   "summary": {
-    "timestampIso": "2025-12-02T13:37:08.192Z",
-    "tag": "mainnet_base_to_xrpl_aggregated",
+    "timestampIso": "2025-12-06T14:59:39.320Z",
+    "tag": "mainnet_near-intents_base_to_xrpl_aggregated",
     "bridgeName": "near-intents",
     "direction": "base_to_xrpl",
-    "xrpAmount": 4,
-    "currency": "USD",
-    "runsPlanned": 12,
-    "totalRuns": 12,
-    "successCount": 11,
+    "transferAmount": 0,
+    "transferAmountUsd": 0,
+    "runsPlanned": 15,
+    "totalRuns": 15,
+    "successCount": 14,
     "failureCount": 1,
-    "successRate": 0.9166666666666666,
+    "successRate": 0.9333333333333333,
     "latency": {
-      "n": 0,
-      "minMs": null,
-      "p50Ms": null,
-      "p90Ms": null,
-      "p95Ms": null,
-      "p99Ms": null,
-      "maxMs": null,
-      "meanMs": null,
-      "stdDevMs": null
+      "n": 14,
+      "minMs": 10567,
+      "p50Ms": 18384,
+      "p90Ms": 44705.3,
+      "p95Ms": 51580.399999999994,
+      "maxMs": 60410,
+      "meanMs": 26602.928571428572,
+      "stdDevMs": 14921.207326028498
     },
     "costs": {
-      "n": 0,
-      "meanTotal": null,
-      "minTotal": null,
-      "maxTotal": null,
-      "stdDevTotal": null,
-      "meanBridge": null,
-      "meanSourceFee": null,
-      "meanTargetFee": null
+      "n": 11,
+      "meanTotalUsd": 4.000000097893141,
+      "minTotalUsd": 4.000000070319082,
+      "maxTotalUsd": 4.00000011361149,
+      "stdDevTotalUsd": 1.800150193911611e-8,
+      "meanBridgeUsd": 1.5015022727272729,
+      "meanSourceFeeUsd": 9.303961285807143e-8,
+      "meanTargetFeeUsd": 0.000010285714285714286
     },
-    "batchDurationMs": 300545
+    "batchDurationMs": 446135
   },
-  "batchCount": 3,
-  "lastUpdated": "2025-12-02T13:37:08.192Z"
+  "batchCount": 4,
+  "lastUpdated": "2025-12-06T14:59:39.321Z"
 }

@@ -1,10 +1,10 @@
 import { NETWORK_CONFIG } from "./network";
-import { RunConfig, NetworkMode, NetworkDirection } from "../types";
+import { RunConfig, NetworkDirection } from "../types";
 
-export function loadConfig(networkMode: NetworkMode, networkDirection: NetworkDirection, xrpAmount: number, nbRuns: number, bridgeName: string): RunConfig {
+export function loadConfig(networkDirection: NetworkDirection, xrpAmount: number, nbRuns: number, bridgeName: string): RunConfig {
   const cfg: RunConfig = {
-    networks: NETWORK_CONFIG[networkMode],
-    tag: `${networkMode}_${networkDirection}_${Date.now()}`,
+    networks: NETWORK_CONFIG,
+    tag: `mainnet_${networkDirection}_${Date.now()}`,
     runs: nbRuns,
     xrpAmount,
     direction: networkDirection,

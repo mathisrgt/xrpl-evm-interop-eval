@@ -1,5 +1,5 @@
 import { Client, dropsToXrp } from "xrpl";
-import type { ChainAdapter, RunContext, SourceOutput, TargetOutput, GasRefundOutput } from "../../types";
+import type { BalanceCheckResult, ChainAdapter, RunContext, SourceOutput, TargetOutput, GasRefundOutput } from "../../types";
 import { getXrplWallet } from "../../utils/environment";
 import chalk from "chalk";
 
@@ -22,6 +22,36 @@ export const xrplAdapter: ChainAdapter = {
 
         console.log(chalk.cyan(`\n🔧 XRPL Adapter prepared`));
         console.log(chalk.dim(`   Wallet: ${wallet.address}`));
+    },
+
+    /** Check if wallet has sufficient balance for the transaction */
+    async checkBalance(ctx: RunContext): Promise<BalanceCheckResult> {
+        const { client, wallet } = ctx.cache.xrpl!;
+        if (!client || !wallet) throw new Error("XRPL not prepared");
+
+        // Get current balance
+        const balanceStr = await client.getXrpBalance(wallet.address);
+        const currentBalance = Number(balanceStr);
+
+        // Calculate required balance:
+        // - Transfer amount
+        // - Reserve requirement (1 XRP minimum for XRPL accounts)
+        // - Fee margin (estimate 1 XRP for gas fees to be safe)
+        const reserveRequirement = 1;
+        const feeMargin = 1;
+        const requiredBalance = ctx.cfg.xrpAmount + reserveRequirement + feeMargin;
+
+        const sufficient = currentBalance >= requiredBalance;
+
+        return {
+            sufficient,
+            currentBalance,
+            requiredBalance,
+            currency: 'XRP',
+            message: sufficient
+                ? `Balance sufficient: ${currentBalance.toFixed(4)} XRP (need ${requiredBalance.toFixed(4)} XRP)`
+                : `Insufficient balance: ${currentBalance.toFixed(4)} XRP (need ${requiredBalance.toFixed(4)} XRP including ${reserveRequirement} XRP reserve + ${feeMargin} XRP fee margin)`
+        };
     },
 
     /**
@@ -144,7 +174,12 @@ export const xrplAdapter: ChainAdapter = {
         const { client, wallet, depositAddress } = ctx.cache.xrpl!;
         if (!client || !wallet) throw new Error("XRPL not prepared");
 
+        // Record when observation starts - only accept transactions AFTER this time
+        // Start monitoring immediately (there's already a 10s wait between runs in index.ts)
+        const observeStartTime = Date.now();
+
         console.log(chalk.cyan(`\n🔍 Watching for INCOMING XRP payment to ${wallet.address}...`));
+        console.log(chalk.dim(`   Only accepting transactions after ${new Date(observeStartTime).toISOString()}`));
         if (depositAddress) {
             console.log(chalk.dim(`   Excluding payments FROM deposit address: ${depositAddress}`));
         }
@@ -184,6 +219,17 @@ export const xrplAdapter: ChainAdapter = {
 
                     // Only interested in INCOMING payments TO our wallet
                     if (tx.Destination !== wallet.address) return;
+
+                    // Get transaction timestamp from ledger close time
+                    // XRPL uses Ripple epoch (946684800 = Jan 1, 2000)
+                    const rippleEpochOffset = 946684800;
+                    const txTimestamp = tx.date ? (tx.date + rippleEpochOffset) * 1000 : Date.now();
+
+                    // Only accept transactions that occurred AFTER we started observing
+                    if (txTimestamp < observeStartTime) {
+                        console.log(chalk.dim(`   Ignoring old transaction from ${new Date(txTimestamp).toISOString()} (hash: ${data.hash?.substring(0, 8)}...)`));
+                        return;
+                    }
 
                     // Exclude payments FROM the deposit address (our original outgoing payment)
                     if (depositAddress && tx.Account === depositAddress) {

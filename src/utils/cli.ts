@@ -7,7 +7,6 @@ export interface CliArgs {
     dst?: string;
     amount?: number;
     runs?: number;
-    mode?: NetworkMode;
 }
 
 export interface CliValidation {
@@ -17,7 +16,6 @@ export interface CliValidation {
     bridgeType?: string;
     amount?: number;
     runs?: number;
-    mode?: NetworkMode;
 }
 
 /**
@@ -53,10 +51,6 @@ export function parseCliArgs(): CliArgs {
                 args.runs = parseInt(nextArg, 10);
                 i++;
                 break;
-            case '--mode':
-                args.mode = nextArg?.toLowerCase() as NetworkMode;
-                i++;
-                break;
         }
     }
 
@@ -79,8 +73,7 @@ export function displayHelp(): void {
     console.log(`  ${chalk.cyan('--src <chain>')}           Source chain (xrpl, base, xrpl-evm, flare)`);
     console.log(`  ${chalk.cyan('--dst <chain>')}           Destination chain (xrpl, base, xrpl-evm, flare)`);
     console.log(`  ${chalk.cyan('--amount <number>')}       Amount of XRP/FXRP to transfer (default: varies by bridge)`);
-    console.log(`  ${chalk.cyan('--runs <number>')}         Number of test runs to execute (default: 1)`);
-    console.log(`  ${chalk.cyan('--mode <mode>')}           Network mode: testnet or mainnet (default: mainnet)\n`);
+    console.log(`  ${chalk.cyan('--runs <number>')}         Number of test runs to execute (default: 1)\n`);
 
     console.log(chalk.bold('SUPPORTED DIRECTIONS:'));
     console.log(`  ${chalk.yellow('XRPL ↔ Base')}        (via Near Intents)`);
@@ -96,11 +89,11 @@ export function displayHelp(): void {
     console.log(`    --src flare --dst xrpl       ${chalk.dim('(flare_to_xrpl - fixed: 10 FXRP, 1 run)')}\n`);
 
     console.log(chalk.bold('EXAMPLES:'));
-    console.log(`  ${chalk.dim('# Transfer 4 XRP from XRPL to Base, 3 runs in mainnet')}`);
+    console.log(`  ${chalk.dim('# Transfer 4 XRP from XRPL to Base, 3 runs')}`);
     console.log(`  npm start --src xrpl --dst base --amount 4 --runs 3\n`);
 
-    console.log(`  ${chalk.dim('# Transfer 2 XRP from XRPL to XRPL-EVM in testnet')}`);
-    console.log(`  npm start --src xrpl --dst xrpl-evm --amount 2 --mode testnet\n`);
+    console.log(`  ${chalk.dim('# Transfer 2 XRP from XRPL to XRPL-EVM')}`);
+    console.log(`  npm start --src xrpl --dst xrpl-evm --amount 2\n`);
 
     console.log(`  ${chalk.dim('# FAsset bridge (amount and runs are fixed)')}`);
     console.log(`  npm start --src xrpl --dst flare\n`);
@@ -109,9 +102,9 @@ export function displayHelp(): void {
     console.log(`  npm start\n`);
 
     console.log(chalk.bold('NOTES:'));
+    console.log(`  ${chalk.dim('• All operations use mainnet (real funds)')}`);
     console.log(`  ${chalk.dim('• FAsset bridge has fixed configuration: 10 XRP/FXRP, 1 run')}`);
-    console.log(`  ${chalk.dim('• If parameters are missing or invalid, the interactive menu will be shown')}`);
-    console.log(`  ${chalk.dim('• Default mode is mainnet if not specified')}\n`);
+    console.log(`  ${chalk.dim('• If parameters are missing or invalid, the interactive menu will be shown')}\n`);
 }
 
 /**
@@ -139,19 +132,13 @@ export function validateCliArgs(args: CliArgs): CliValidation {
     const errors: string[] = [];
     const result: CliValidation = {
         valid: false,
-        errors: [],
-        mode: args.mode || 'mainnet'
+        errors: []
     };
 
     // Check if we have both src and dst
     if (!args.src && !args.dst) {
         // No CLI args provided, use interactive mode
         return result;
-    }
-
-    // Validate mode
-    if (args.mode && args.mode !== 'testnet' && args.mode !== 'mainnet') {
-        errors.push(`Invalid mode: '${args.mode}'. Must be 'testnet' or 'mainnet'.`);
     }
 
     // Validate src and dst are both provided

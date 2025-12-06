@@ -107,7 +107,7 @@ export function logStep(step: string): void {
 export function logConfig(cfg: RunConfig): void {
     const rows = [
         ['Tag', cfg.tag],
-        ['Mode', chalk[cfg.networks.mode === 'mainnet' ? 'green' : 'yellow'](cfg.networks.mode.toUpperCase())],
+        ['Mode', chalk.green('MAINNET')],
         ['Direction', chalk.cyan(cfg.direction)],
         ['Amount', formatAmount(cfg.xrpAmount, 'XRP')],
         ['Runs', chalk.white(cfg.runs.toString())],
@@ -153,7 +153,7 @@ export function logPrepare(ctx: RunContext): void {
 export function logSubmit(ctx: RunContext, srcOutput: SourceOutput) {
     const sourceChain = getSourceChain(ctx.cfg.direction);
     const chainName = chalk.bold(sourceChain.toUpperCase());
-    const amount = formatAmount(srcOutput.xrpAmount, 'XRP');
+    const amount = formatAmount(srcOutput.xrpAmount, srcOutput.currency || 'XRP');
 
     // Determine the bridge type from the config
     const bridgeType = ctx.cfg.bridgeName;
@@ -172,7 +172,7 @@ export function logSubmit(ctx: RunContext, srcOutput: SourceOutput) {
 export function logObserve(ctx: RunContext, output: TargetOutput): void {
     const targetChain = getTargetChain(ctx.cfg.direction);
     const chainName = chalk.bold(targetChain.toUpperCase());
-    const amount = formatAmount(output.xrpAmount, 'XRP');
+    const amount = formatAmount(output.xrpAmount, output.currency || 'XRP');
 
     console.log(`\n✅ ${chainName} transfer received`);
     console.log(`Amount: ${amount}`);
@@ -302,29 +302,6 @@ function displayBanner(): void {
     console.log(chalk.white(banner));
 }
 
-/**
- * Display network mode selection menu
- */
-async function selectNetworkMode(rl: readline.Interface): Promise<NetworkMode> {
-    console.log(chalk.bold('\n🌐 Select Network Mode:'));
-    console.log(` 1) ${chalk.bold('Testnet')}`);
-    console.log(` 2) ${chalk.bold('Mainnet')}`);
-
-    while (true) {
-        const answer = await askQuestion(rl, '\nEnter your choice: ');
-
-        switch (answer) {
-            case '1':
-                console.log(chalk.green('✓ Selected: Testnet'));
-                return 'testnet';
-            case '2':
-                console.log(chalk.yellow('⚠️  Selected: Mainnet (real funds will be used)'));
-                return 'mainnet';
-            default:
-                console.log(chalk.red('❌ Invalid choice. Please enter 1 or 2.'));
-        }
-    }
-}
 
 /**
  * Display bridge type selection menu
@@ -415,7 +392,7 @@ async function selectBridgeDirection(rl: readline.Interface, bridgeType: string)
 /**
  * Get XRP amount with validation
  */
-async function selectXrpAmount(rl: readline.Interface, networkMode: NetworkMode): Promise<number> {
+async function selectXrpAmount(rl: readline.Interface): Promise<number> {
     console.log(chalk.bold(`🚨 Up to 2 XRP (AVG. 0.2 XRP) could be used for gas fees.`));
     console.log(chalk.bold('\n💰 Enter an XRP amount (min 2 XRP) for each transaction:'));
 
@@ -424,9 +401,9 @@ async function selectXrpAmount(rl: readline.Interface, networkMode: NetworkMode)
 
         const customAmount = parseFloat(answer);
         if (!isNaN(customAmount) && customAmount >= 2) {
-            if (networkMode === 'mainnet' && customAmount >= 10) {
+            if (customAmount >= 10) {
                 const confirm = await askQuestion(rl,
-                    chalk.yellow(`⚠️  You entered ${customAmount} XRP for mainnet for each transaction. This uses real funds. Continue? (y/N): `)
+                    chalk.yellow(`⚠️  You entered ${customAmount} XRP for each transaction. This uses real mainnet funds. Continue? (y/N): `)
                 );
                 if (confirm.toLowerCase() !== 'y' && confirm.toLowerCase() !== 'yes') {
                     continue;
@@ -471,28 +448,22 @@ async function selectNumberOfRuns(rl: readline.Interface): Promise<number> {
  * Display configuration summary for confirmation
  */
 async function confirmConfiguration(rl: readline.Interface, config: RunConfig): Promise<boolean> {
-    const { networks, direction, xrpAmount, runs } = config;
+    const { direction, xrpAmount, runs } = config;
 
     console.log(chalk.bold('\n📋 Configuration Summary:'));
     console.log('┌─────────────────────────────────────────────┐');
-    console.log(`│ ${chalk.bold('Network Mode:')} ${chalk[networks.mode === 'mainnet' ? 'yellow' : 'green'](networks.mode.toUpperCase().padEnd(30))}│`);
+    console.log(`│ ${chalk.bold('Network Mode:')} ${chalk.yellow('MAINNET'.padEnd(30))}│`);
     console.log(`│ ${chalk.bold('Direction:')} ${chalk.cyan(direction.replace(/_/g, ' ').replace(/to/gi, '→').toUpperCase().padEnd(33))}│`);
     console.log(`│ ${chalk.bold('XRP Amount:')} ${chalk.yellow(xrpAmount.toString().padEnd(32))}│`);
     console.log(`│ ${chalk.bold('Test Runs:')} ${chalk.white(runs.toString().padEnd(33))}│`);
     console.log('└─────────────────────────────────────────────┘');
-
-    if (networks.mode === 'mainnet') {
-        console.log(chalk.red('\n⚠️  WARNING: This will use real XRP on mainnet!'));
-        console.log(chalk.red('💸 Estimated cost: ~' + (xrpAmount * runs).toFixed(2) + ' XRP'));
-        console.log(chalk.red('💸 Estimated bridge fees: ~' + (0.2 * runs).toFixed(2) + ' XRP'));
-    }
 
     const answer = await askQuestion(rl, '\nProceed with this configuration? (Y/n): ');
     return answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes' || answer === '';
 }
 
 
-export async function showMenu(networkMode: NetworkMode): Promise<{ config: RunConfig; bridgeType: string }> {
+export async function showMenu(): Promise<{ config: RunConfig; bridgeType: string }> {
     const rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout
@@ -501,7 +472,7 @@ export async function showMenu(networkMode: NetworkMode): Promise<{ config: RunC
     try {
         displayBanner();
 
-        // Collect all configuration parameters (mode already selected)
+        // Collect all configuration parameters
         const bridgeType = await selectBridgeType(rl);
         const networkDirection = await selectBridgeDirection(rl, bridgeType);
 
@@ -516,11 +487,11 @@ export async function showMenu(networkMode: NetworkMode): Promise<{ config: RunC
             console.log(chalk.dim('   Amount: 10 XRP/FXRP per transaction'));
             console.log(chalk.dim('   Runs: 1 (manual bridge operation)'));
         } else {
-            xrpAmount = await selectXrpAmount(rl, networkMode);
+            xrpAmount = await selectXrpAmount(rl);
             nbRuns = await selectNumberOfRuns(rl);
         }
 
-        const config = loadConfig(networkMode, networkDirection, xrpAmount, nbRuns, bridgeType);
+        const config = loadConfig(networkDirection, xrpAmount, nbRuns, bridgeType);
 
         // Show summary and get confirmation
         const confirmed = await confirmConfiguration(rl, config);
@@ -560,28 +531,91 @@ async function displayWalletInfo(): Promise<void> {
             xrplBalance = `${Number(balance).toFixed(4)} XRP`;
             await client.disconnect();
         } catch (err) {
-            xrplBalance = chalk.red('Error fetching balance');
+            xrplBalance = chalk.red('Error');
         }
 
-        // Fetch EVM balance (using XRPL EVM sidechain)
-        let evmBalance = 'Loading...';
+        // Fetch XRPL EVM sidechain balance
+        let xrplevmBalance = 'Loading...';
         try {
+            const { xrplevm } = await import('../utils/chains');
             const publicClient = createPublicClient({
-                chain: mainnet,
+                chain: xrplevm,
                 transport: http('https://rpc.xrplevm.org')
             });
             const balance = await publicClient.getBalance({ address: evmAccount.address as `0x${string}` });
-            evmBalance = `${parseFloat(formatEther(balance)).toFixed(4)} XRP`;
+            xrplevmBalance = `${parseFloat(formatEther(balance)).toFixed(4)} XRP`;
         } catch (err) {
-            evmBalance = chalk.red('Error fetching balance');
+            xrplevmBalance = chalk.red('Error');
         }
 
-        // Display addresses and balances
+        // Fetch Flare FLR and FXRP balances
+        let flrBalance = 'Loading...';
+        let fxrpBalance = 'Loading...';
+        try {
+            const { flare } = await import('viem/chains');
+            const publicClient = createPublicClient({
+                chain: flare,
+                transport: http('https://flare-api.flare.network/ext/C/rpc')
+            });
+
+            // Get FLR balance
+            const flrBal = await publicClient.getBalance({ address: evmAccount.address as `0x${string}` });
+            flrBalance = `${parseFloat(formatEther(flrBal)).toFixed(4)} FLR`;
+
+            // Get FXRP token balance
+            const FXRP_TOKEN_ADDRESS = '0xAd552A648C74D49E10027AB8a618A3ad4901c5bE' as const;
+            const fxrpBal = await publicClient.readContract({
+                address: FXRP_TOKEN_ADDRESS,
+                abi: [{ name: 'balanceOf', type: 'function', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ name: 'balance', type: 'uint256' }] }],
+                functionName: 'balanceOf',
+                args: [evmAccount.address as `0x${string}`]
+            });
+            fxrpBalance = `${parseFloat(formatEther(fxrpBal as bigint)).toFixed(4)} FXRP`;
+        } catch (err) {
+            flrBalance = chalk.red('Error');
+            fxrpBalance = chalk.red('Error');
+        }
+
+        // Fetch Base ETH and USDC balances
+        let baseEthBalance = 'Loading...';
+        let baseUsdcBalance = 'Loading...';
+        try {
+            const { base } = await import('../utils/chains');
+            const publicClient = createPublicClient({
+                chain: base,
+                transport: http('https://mainnet.base.org')
+            });
+
+            // Get ETH balance
+            const ethBal = await publicClient.getBalance({ address: evmAccount.address as `0x${string}` });
+            baseEthBalance = `${parseFloat(formatEther(ethBal)).toFixed(4)} ETH`;
+
+            // Get USDC token balance
+            const USDC_BASE_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const;
+            const usdcBal = await publicClient.readContract({
+                address: USDC_BASE_ADDRESS,
+                abi: [{ name: 'balanceOf', type: 'function', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ name: 'balance', type: 'uint256' }] }],
+                functionName: 'balanceOf',
+                args: [evmAccount.address as `0x${string}`]
+            });
+            // USDC has 6 decimals
+            baseUsdcBalance = `${(Number(usdcBal) / 1e6).toFixed(2)} USDC`;
+        } catch (err) {
+            baseEthBalance = chalk.red('Error');
+            baseUsdcBalance = chalk.red('Error');
+        }
+
+        // Display addresses
         console.log(`  ${chalk.bold('XRPL Address:')} ${chalk.cyan(xrplWallet.address)}`);
-        console.log(`  ${chalk.bold('Balance:')}      ${chalk.yellow(xrplBalance)}`);
-        console.log('');
         console.log(`  ${chalk.bold('EVM Address:')}  ${chalk.cyan(evmAccount.address)}`);
-        console.log(`  ${chalk.bold('Balance:')}      ${chalk.yellow(evmBalance)}`);
+        console.log('');
+
+        // Display balances in the requested format
+        console.log(chalk.bold('  Balances:'));
+        console.log(`    ${chalk.bold('XRPL:')}     ${chalk.yellow(xrplBalance)}`);
+        console.log(`    ${chalk.bold('XRPL EVM:')} ${chalk.yellow(xrplevmBalance)}`);
+        console.log(`    ${chalk.bold('Flare:')}    ${chalk.yellow(flrBalance)} ${chalk.dim('|')} ${chalk.yellow(fxrpBalance)}`);
+        console.log(`    ${chalk.bold('Base:')}     ${chalk.yellow(baseEthBalance)} ${chalk.dim('|')} ${chalk.yellow(baseUsdcBalance)}`);
 
     } catch (err) {
         console.log(chalk.red('  Error loading wallet information'));
@@ -592,23 +626,55 @@ async function displayWalletInfo(): Promise<void> {
 }
 
 /**
- * Show main menu: Select network mode or manage metrics
+ * Display wallet addresses and balances with confirmation prompt
+ * Returns true if user confirms, false if user cancels
  */
-export async function showMainMenu(): Promise<{ action: 'bridge' | 'metrics', mode?: NetworkMode }> {
+export async function displayWalletInfoAndConfirm(): Promise<boolean> {
+    await displayWalletInfo();
+
     const rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout
     });
 
     try {
-        console.log(chalk.bold.cyan('\n╔══════════════════════════════════════════════════════════════════════════════╗'));
-        console.log(chalk.bold.cyan('║             XRPL ↔ EVM Bridge Performance & Metrics Tool                     ║'));
-        console.log(chalk.bold.cyan('╚══════════════════════════════════════════════════════════════════════════════╝\n'));
+        const answer = await new Promise<string>((resolve) => {
+            rl.question(chalk.yellow('\nContinue with these addresses? (Y/n): '), (ans) => {
+                resolve(ans.trim().toLowerCase());
+            });
+        });
 
-        // Display wallet addresses and balances
-        await displayWalletInfo();
+        if (answer === 'n' || answer === 'no') {
+            return false;
+        }
+        
+        return true;
+    } finally {
+        rl.close();
+    }
+}
 
-        console.log(chalk.bold('\n📋 Menu'));
+/**
+ * Show main menu: Select action (run tests or manage metrics)
+ */
+export async function showMainMenu(): Promise<{ action: 'bridge' | 'metrics' }> {
+    console.log(chalk.bold.cyan('\n╔══════════════════════════════════════════════════════════════════════════════╗'));
+    console.log(chalk.bold.cyan('║             XRPL ↔ EVM Bridge Performance & Metrics Tool                     ║'));
+    console.log(chalk.bold.cyan('╚══════════════════════════════════════════════════════════════════════════════╝\n'));
+
+    // Display wallet addresses and balances, get user confirmation
+    const confirmed = await displayWalletInfoAndConfirm();
+    if (!confirmed) {
+        process.exit(0);
+    }
+
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+    });
+
+    try {
+        console.log(chalk.bold('📋 Menu'));
         console.log(` 1) ${chalk.bold('Run tests')} ${chalk.dim('(Execute cross-chain bridge transactions)')}`);
         console.log(` 2) ${chalk.bold('Compute metrics')} ${chalk.dim('(Regenerate aggregated metrics)')}`);
 
@@ -617,8 +683,7 @@ export async function showMainMenu(): Promise<{ action: 'bridge' | 'metrics', mo
 
             switch (answer) {
                 case '1':
-                    const mode = await selectNetworkModeForTests(rl);
-                    return { action: 'bridge', mode };
+                    return { action: 'bridge' };
                 case '2':
                     await showMetricsMenu(rl);
                     return { action: 'metrics' };
@@ -631,29 +696,6 @@ export async function showMainMenu(): Promise<{ action: 'bridge' | 'metrics', mo
     }
 }
 
-/**
- * Select network mode for running tests
- */
-async function selectNetworkModeForTests(rl: readline.Interface): Promise<NetworkMode> {
-    console.log(chalk.bold('\n🌐 Select Network Mode:'));
-    console.log(` 1) ${chalk.bold('Testnet')} ${chalk.dim('(Test with testnet funds)')}`);
-    console.log(` 2) ${chalk.bold('Mainnet')} ${chalk.dim('(Use real funds)')}`);
-
-    while (true) {
-        const answer = await askQuestion(rl, '\nEnter your choice: ');
-
-        switch (answer) {
-            case '1':
-                console.log(chalk.green('✓ Selected: Testnet\n'));
-                return 'testnet';
-            case '2':
-                console.log(chalk.yellow('⚠️  Selected: Mainnet (real funds will be used)\n'));
-                return 'mainnet';
-            default:
-                console.log(chalk.red('❌ Invalid choice. Please enter 1 or 2.'));
-        }
-    }
-}
 
 /**
  * Show metrics computation submenu
@@ -687,27 +729,7 @@ async function showMetricsMenu(rl: readline.Interface): Promise<void> {
  * Recompute metrics for a specific folder
  */
 async function recomputeSpecificFolderMetrics(rl: readline.Interface): Promise<void> {
-    console.log(chalk.bold('\n🌐 Select Network Mode:'));
-    console.log(` 1) ${chalk.bold('Testnet')}`);
-    console.log(` 2) ${chalk.bold('Mainnet')}`);
-
-    let mode: NetworkMode;
-    while (true) {
-        const answer = await askQuestion(rl, '\nEnter your choice: ');
-
-        if (answer === '1') {
-            mode = 'testnet';
-            console.log(chalk.green('✓ Selected: Testnet'));
-            break;
-        } else if (answer === '2') {
-            mode = 'mainnet';
-            console.log(chalk.green('✓ Selected: Mainnet'));
-            break;
-        } else {
-            console.log(chalk.red('❌ Invalid choice. Please enter 1 or 2.'));
-        }
-    }
-
+    const mode: NetworkMode = 'mainnet';
     const folders = getDirectionFolders(mode);
 
     if (folders.length === 0) {
@@ -753,14 +775,14 @@ async function recomputeSpecificFolderMetrics(rl: readline.Interface): Promise<v
                     console.log(`   Min/Max:          ${chalk.dim((summary.latency.minMs ?? 0).toFixed(2))} / ${chalk.dim((summary.latency.maxMs ?? 0).toFixed(2))} ms`);
                 }
 
-                if (summary.costs?.meanTotal !== null) {
-                    console.log(`\n   ${chalk.bold('Costs:')}`);
-                    console.log(`   Mean Total:       ${chalk.yellow((summary.costs.meanTotal).toFixed(6))} ${summary.currency}`);
-                    if (summary.costs.meanBridge !== null) {
-                        console.log(`   Mean Bridge Fee:  ${chalk.yellow((summary.costs.meanBridge).toFixed(6))} ${summary.currency}`);
+                if (summary.costs?.meanTotalUsd !== null) {
+                    console.log(`\n   ${chalk.bold('Costs (USD):')}`);
+                    console.log(`   Mean Total:       ${chalk.yellow('$' + (summary.costs.meanTotalUsd).toFixed(4))}`);
+                    if (summary.costs.meanBridgeUsd !== null) {
+                        console.log(`   Mean Bridge Fee:  ${chalk.yellow('$' + (summary.costs.meanBridgeUsd).toFixed(4))}`);
                     }
-                    console.log(`   Mean Source Fee:  ${chalk.dim((summary.costs.meanSourceFee ?? 0).toFixed(6))} ${summary.currency}`);
-                    console.log(`   Mean Target Fee:  ${chalk.dim((summary.costs.meanTargetFee ?? 0).toFixed(6))} ${summary.currency}`);
+                    console.log(`   Mean Source Fee:  ${chalk.dim('$' + (summary.costs.meanSourceFeeUsd ?? 0).toFixed(4))}`);
+                    console.log(`   Mean Target Fee:  ${chalk.dim('$' + (summary.costs.meanTargetFeeUsd ?? 0).toFixed(4))}`);
                 }
 
                 console.log(chalk.dim('─'.repeat(60)));
@@ -815,7 +837,10 @@ export function displayMetrics(metrics: MetricsSummary): void {
     console.log(`  Tag:              ${chalk.white(metrics.tag)}`);
     console.log(`  Bridge:           ${chalk.cyan(metrics.bridgeName)}`);
     console.log(`  Direction:        ${chalk.white(metrics.direction)}`);
-    console.log(`  Amount (${metrics.currency}):     ${chalk.white(String(metrics.xrpAmount))}`);
+    console.log(`  Transfer Amount:  ${chalk.white(String(metrics.transferAmount))}`);
+    if (metrics.transferAmountUsd > 0) {
+        console.log(`  Transfer USD:     ${chalk.white('$' + metrics.transferAmountUsd.toFixed(4))}`);
+    }
     console.log(`  Runs requested:   ${chalk.white(String(metrics.runsPlanned))}`);
 
     console.log(`\n${chalk.bold('Execution:')}`);
@@ -838,9 +863,15 @@ export function displayMetrics(metrics: MetricsSummary): void {
     } else {
         console.log(chalk.red("\n⚠️  No successful runs to analyze."));
     }
-    if (metrics.costs.meanTotal && metrics.costs.meanBridge) {
-        console.log(`\n${chalk.bold('Costs average:')}`);
-        console.log(`  Total Cost:    ${chalk.yellow(metrics.costs.meanTotal.toFixed(6) + ' ' + metrics.currency)}`);
-        console.log(`  Bridge Cost:   ${chalk.yellow(metrics.costs.meanBridge.toFixed(6) + ' ' + metrics.currency)}`);
+    if (metrics.costs.meanTotalUsd !== null && metrics.costs.meanBridgeUsd !== null) {
+        console.log(`\n${chalk.bold('Costs average (USD):')}`);
+        console.log(`  Total Cost:    ${chalk.yellow('$' + metrics.costs.meanTotalUsd.toFixed(4))}`);
+        console.log(`  Bridge Fee:    ${chalk.yellow('$' + metrics.costs.meanBridgeUsd.toFixed(4))}`);
+        if (metrics.costs.meanSourceFeeUsd !== null) {
+            console.log(`  Source Fee:    ${chalk.yellow('$' + metrics.costs.meanSourceFeeUsd.toFixed(4))}`);
+        }
+        if (metrics.costs.meanTargetFeeUsd !== null) {
+            console.log(`  Target Fee:    ${chalk.yellow('$' + metrics.costs.meanTargetFeeUsd.toFixed(4))}`);
+        }
     }
 }

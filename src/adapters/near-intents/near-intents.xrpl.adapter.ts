@@ -1,6 +1,7 @@
 import { OneClickService, OpenAPI, QuoteRequest } from "@defuse-protocol/one-click-sdk-typescript";
+import chalk from "chalk";
 import { Client, Payment, dropsToXrp, xrpToDrops } from "xrpl";
-import type { ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../../types";
+import type { BalanceCheckResult, ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../../types";
 import { NEAR_INTENTS_TOKEN_IDS } from "../../utils/constants";
 import { ONE_CLICK_JWT, getXrplWallet } from "../../utils/environment";
 
@@ -13,6 +14,36 @@ export const xrplAdapter: ChainAdapter = {
         const wallet = getXrplWallet();
         ctx.cache.xrpl = { client, wallet };
         ctx.cleaner.trackXrpl(client, wallet.address);
+    },
+
+    /** Check if wallet has sufficient balance for the transaction */
+    async checkBalance(ctx: RunContext): Promise<BalanceCheckResult> {
+        const { client, wallet } = ctx.cache.xrpl!;
+        if (!client || !wallet) throw new Error("XRPL not prepared");
+
+        // Get current balance
+        const balanceStr = await client.getXrpBalance(wallet.address);
+        const currentBalance = Number(balanceStr);
+
+        // Calculate required balance:
+        // - Transfer amount
+        // - Reserve requirement (1 XRP minimum for XRPL accounts)
+        // - Fee margin (estimate 1 XRP for gas fees to be safe)
+        const reserveRequirement = 1;
+        const feeMargin = 2;
+        const requiredBalance = ctx.cfg.xrpAmount + reserveRequirement + feeMargin;
+
+        const sufficient = currentBalance >= requiredBalance;
+
+        return {
+            sufficient,
+            currentBalance,
+            requiredBalance,
+            currency: 'XRP',
+            message: sufficient
+                ? `Balance sufficient: ${currentBalance.toFixed(4)} XRP (need ${requiredBalance.toFixed(4)} XRP)`
+                : `Insufficient balance: ${currentBalance.toFixed(4)} XRP (need ${requiredBalance.toFixed(4)} XRP including ${reserveRequirement} XRP reserve + ${feeMargin} XRP fee margin)`
+        };
     },
 
     async submit(ctx: RunContext): Promise<SourceOutput> {
@@ -117,18 +148,22 @@ export const xrplAdapter: ChainAdapter = {
         const txHash = res.result.hash!;
         const txFee = Number(dropsToXrp(res.result.tx_json.Fee || "0"));
 
-        // For near-intents XRPL→Base, we send XRP but track the USD value
-        // The xrpAmount field represents the expected USD value on the destination
-        return { xrpAmount: ctx.cfg.xrpAmount, txHash, submittedAt, txFee, currency: 'USD' };
+        // For near-intents XRPL→Base, we send XRP (native currency on source chain)
+        return { xrpAmount: ctx.cfg.xrpAmount, txHash, submittedAt, txFee, currency: 'XRP' };
     },
 
     async observe(ctx: RunContext): Promise<TargetOutput> {
         const { client, wallet, depositAddress } = ctx.cache.xrpl!;
         if (!client || !wallet) throw new Error("XRPL not prepared");
 
+        // Record when observation starts - only accept transactions AFTER this time
+        // Start monitoring immediately (there's already a 10s wait between runs in index.ts)
+        const observeStartTime = Date.now();
+
         console.log(`🔍 Watching for XRP payments TO ${wallet.address} on XRPL`);
+        console.log(chalk.dim(`   Only accepting transactions after ${new Date(observeStartTime).toISOString()}`));
         if (depositAddress) {
-            console.log(`   Excluding payments FROM deposit address: ${depositAddress}`);
+            console.log(chalk.dim(`   Excluding payments FROM deposit address: ${depositAddress}`));
         }
 
         return await new Promise<TargetOutput>((resolve, reject) => {
@@ -164,9 +199,20 @@ export const xrplAdapter: ChainAdapter = {
                     if (!tx || tx.TransactionType !== "Payment") return;
                     if (tx.Destination !== wallet.address) return;
 
+                    // Get transaction timestamp from ledger close time
+                    // XRPL uses Ripple epoch (946684800 = Jan 1, 2000)
+                    const rippleEpochOffset = 946684800;
+                    const txTimestamp = tx.date ? (tx.date + rippleEpochOffset) * 1000 : Date.now();
+
+                    // Only accept transactions that occurred AFTER we started observing
+                    if (txTimestamp < observeStartTime) {
+                        console.log(chalk.dim(`   Ignoring old transaction from ${new Date(txTimestamp).toISOString()} (hash: ${data.hash?.substring(0, 8)}...)`));
+                        return;
+                    }
+
                     // Exclude payments FROM the deposit address (our outgoing payment)
                     if (depositAddress && tx.Account === depositAddress) {
-                        console.log(`   Skipping outgoing payment to deposit address in tx ${data.hash}`);
+                        console.log(chalk.dim(`   Skipping outgoing payment to deposit address in tx ${data.hash}`));
                         return;
                     }
 
@@ -174,19 +220,18 @@ export const xrplAdapter: ChainAdapter = {
                     const txFeeXrp = Number(dropsToXrp(tx.Fee));
                     const finalizedAt = Date.now();
 
-                    console.log(`✅ Found incoming XRP payment!`);
-                    console.log(`   From: ${tx.Account}`);
-                    console.log(`   Amount: ${deliveredXrp} XRP`);
-                    console.log(`   Tx: ${data.hash}`);
+                    console.log(chalk.green(`✅ Found incoming XRP payment!`));
+                    console.log(chalk.dim(`   From: ${tx.Account}`));
+                    console.log(chalk.dim(`   Amount: ${deliveredXrp} XRP`));
+                    console.log(chalk.dim(`   Tx: ${data.hash}`));
 
-                    // For near-intents Base→XRPL, we receive XRP
-                    // But we track as USD for consistency in metrics
+                    // For near-intents Base→XRPL, we receive XRP (native currency on target chain)
                     resolveOnce({
                         xrpAmount: deliveredXrp,
                         txHash: data.hash,
                         finalizedAt,
                         txFee: txFeeXrp,
-                        currency: 'USD',
+                        currency: 'XRP',
                     } as TargetOutput);
                 } catch (err) {
                     rejectOnce(err);
@@ -197,7 +242,7 @@ export const xrplAdapter: ChainAdapter = {
 
             client.request({ command: "subscribe", accounts: [wallet.address] })
                 .then(() => {
-                    console.log(`   Subscribed to real-time transaction stream`);
+                    console.log(chalk.dim(`   ✓ Subscribed to real-time transaction stream`));
                     ctx.cleaner.add(async () => {
                         try { client.off("transaction", onTx); } catch { }
                         try {

@@ -1,7 +1,6 @@
-import axios from "axios";
 import chalk from "chalk";
 import { Client, dropsToXrp, xrpToDrops } from "xrpl";
-import type { ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../../types";
+import type { BalanceCheckResult, ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../../types";
 import { SQUID_INTEGRATOR_ID, getXrplWallet } from "../../utils/environment";
 
 // Helper to get token address format
@@ -64,20 +63,28 @@ export const xrplAdapter: ChainAdapter = {
             try {
                 console.log(chalk.cyan(`🔄 Route attempt ${attempt}/${maxRetries}...`));
 
-                const result = await axios.post(
+                const result = await fetch(
                     "https://v2.api.squidrouter.com/v2/route",
-                    params,
                     {
+                        method: 'POST',
                         headers: {
                             "x-integrator-id": SQUID_INTEGRATOR_ID,
                             "Content-Type": "application/json",
                         },
+                        body: JSON.stringify(params)
                     }
                 );
 
-                const requestId = result.headers["x-request-id"];
+                if (!result.ok) {
+                    const errorData = await result.json().catch(() => ({}));
+                    const errorMsg = errorData.message || errorData || 'Unknown error';
+                    throw new Error(`HTTP ${result.status}: ${errorMsg}`);
+                }
+
+                const requestId = result.headers.get("x-request-id") || '';
+                const data = await result.json();
                 ctx.cache.squid = {
-                    route: result.data.route,
+                    route: data.route,
                     requestId
                 };
 
@@ -85,8 +92,8 @@ export const xrplAdapter: ChainAdapter = {
                 return;
             } catch (error: any) {
                 lastError = error;
-                const errorMsg = error.response?.data?.message || error.response?.data || error.message || 'Unknown error';
-                const statusCode = error.response?.status || 'N/A';
+                const errorMsg = error.message || 'Unknown error';
+                const statusCode = error.message?.includes('HTTP') ? error.message.split(':')[0] : 'N/A';
 
                 console.log(chalk.red(`❌ Route attempt ${attempt}/${maxRetries} failed (${statusCode}): ${errorMsg}`));
 
@@ -105,6 +112,36 @@ export const xrplAdapter: ChainAdapter = {
         }
 
         throw new Error(`Failed to get Squid route: ${lastError?.message || 'Unknown error'}`);
+    },
+
+    /** Check if wallet has sufficient balance for the transaction */
+    async checkBalance(ctx: RunContext): Promise<BalanceCheckResult> {
+        const { client, wallet } = ctx.cache.xrpl!;
+        if (!client || !wallet) throw new Error("XRPL not prepared");
+
+        // Get current balance
+        const balanceStr = await client.getXrpBalance(wallet.address);
+        const currentBalance = Number(balanceStr);
+
+        // Calculate required balance:
+        // - Transfer amount
+        // - Reserve requirement (1 XRP minimum for XRPL accounts)
+        // - Fee margin (estimate 1 XRP for gas fees to be safe)
+        const reserveRequirement = 1;
+        const feeMargin = 1;
+        const requiredBalance = ctx.cfg.xrpAmount + reserveRequirement + feeMargin;
+
+        const sufficient = currentBalance >= requiredBalance;
+
+        return {
+            sufficient,
+            currentBalance,
+            requiredBalance,
+            currency: 'XRP',
+            message: sufficient
+                ? `Balance sufficient: ${currentBalance.toFixed(4)} XRP (need ${requiredBalance.toFixed(4)} XRP)`
+                : `Insufficient balance: ${currentBalance.toFixed(4)} XRP (need ${requiredBalance.toFixed(4)} XRP including ${reserveRequirement} XRP reserve + ${feeMargin} XRP fee margin)`
+        };
     },
 
     /** Submit XRPL Payment using Squid route */
@@ -158,6 +195,13 @@ export const xrplAdapter: ChainAdapter = {
         const { client, wallet } = ctx.cache.xrpl ?? {};
         if (!client || !wallet) throw new Error("XRPL not prepared");
 
+        // Record when observation starts - only accept transactions AFTER this time
+        // Start monitoring immediately (there's already a 10s wait between runs in index.ts)
+        const observeStartTime = Date.now();
+
+        console.log(`🔍 Monitoring transactions for ${wallet.address}`);
+        console.log(chalk.dim(`   Only accepting transactions after ${new Date(observeStartTime).toISOString()}`));
+
         return await new Promise<TargetOutput>((resolve, reject) => {
             let finished = false;
 
@@ -191,6 +235,17 @@ export const xrplAdapter: ChainAdapter = {
                     if (!tx || tx.TransactionType !== "Payment") return;
                     if (tx.Destination !== wallet.address) return;
 
+                    // Get transaction timestamp from ledger close time
+                    // XRPL uses Ripple epoch (946684800 = Jan 1, 2000)
+                    const rippleEpochOffset = 946684800;
+                    const txTimestamp = tx.date ? (tx.date + rippleEpochOffset) * 1000 : Date.now();
+
+                    // Only accept transactions that occurred AFTER we started observing
+                    if (txTimestamp < observeStartTime) {
+                        console.log(chalk.dim(`   Ignoring old transaction from ${new Date(txTimestamp).toISOString()} (hash: ${data.hash?.substring(0, 8)}...)`));
+                        return;
+                    }
+
                     const deliveredXrp = Number(dropsToXrp(meta?.delivered_amount));
                     const txFeeXrp = Number(dropsToXrp(tx.Fee));
                     const finalizedAt = Date.now();
@@ -211,7 +266,7 @@ export const xrplAdapter: ChainAdapter = {
 
             client.request({ command: "subscribe", accounts: [wallet.address] })
                 .then(() => {
-                    console.log(`🔍 Monitoring transactions for ${wallet.address}`);
+                    console.log(chalk.dim(`   ✓ Subscribed to real-time transaction stream`));
                     ctx.cleaner.add(async () => {
                         try { client.off("transaction", onTx); } catch { }
                         try {
@@ -225,13 +280,20 @@ export const xrplAdapter: ChainAdapter = {
         });
     },
 
-    /** 
+    /**
      * Monitor the gas refund transaction from the bridge refunder contract
      * This runs after the main bridge transfer is complete
      */
     async observeGasRefund(ctx: RunContext): Promise<GasRefundOutput> {
         const { client, wallet } = ctx.cache.xrpl!;
         if (!client || !wallet) throw new Error("XRPL not prepared");
+
+        // Record when observation starts - only accept transactions AFTER this time
+        // Start monitoring immediately (there's already a 10s wait between runs in index.ts)
+        const observeStartTime = Date.now();
+
+        console.log(`🔍 Monitoring gas return transaction for ${wallet.address}`);
+        console.log(chalk.dim(`   Only accepting transactions after ${new Date(observeStartTime).toISOString()}`));
 
         return await new Promise<GasRefundOutput>((resolve, reject) => {
             let finished = false;
@@ -267,6 +329,17 @@ export const xrplAdapter: ChainAdapter = {
                     if (!tx || tx.TransactionType !== "Payment") return;
                     if (tx.Destination !== wallet.address) return;
 
+                    // Get transaction timestamp from ledger close time
+                    // XRPL uses Ripple epoch (946684800 = Jan 1, 2000)
+                    const rippleEpochOffset = 946684800;
+                    const txTimestamp = tx.date ? (tx.date + rippleEpochOffset) * 1000 : Date.now();
+
+                    // Only accept transactions that occurred AFTER we started observing
+                    if (txTimestamp < observeStartTime) {
+                        console.log(chalk.dim(`   Ignoring old gas refund from ${new Date(txTimestamp).toISOString()} (hash: ${data.hash?.substring(0, 8)}...)`));
+                        return;
+                    }
+
                     const refundXrp = Number(dropsToXrp(meta?.delivered_amount));
 
                     resolveOnce({
@@ -282,7 +355,7 @@ export const xrplAdapter: ChainAdapter = {
 
             client.request({ command: "subscribe", accounts: [wallet.address] })
                 .then(() => {
-                    console.log(`🔍 Monitoring gas return transaction for ${wallet.address}`);
+                    console.log(chalk.dim(`   ✓ Subscribed to real-time transaction stream`));
                     ctx.cleaner.add(async () => {
                         try { client.off("transaction", onRefundTx); } catch { }
                         try { await client.request({ command: "unsubscribe", accounts: [wallet.address] }); } catch { }

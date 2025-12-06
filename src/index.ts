@@ -6,10 +6,9 @@ import { displayMetrics, logConfig, logError, logObserve, logPrepare, logRecord,
 import { waitWithCountdown } from "./utils/time";
 import { computeMetrics } from "./utils/metrics";
 import { createRunner, BridgeType } from "./runners/runner.factory";
-import { getXrplWallet, getEvmAccount } from "./utils/environment";
 import { parseCliArgs, validateCliArgs, displayHelp, displayValidationErrors } from "./utils/cli";
 import { loadConfig } from "./runners/config";
-import * as readline from 'readline';
+import { BatchAbortedException, RunIgnoredException } from "./utils/data-integrity";
 
 async function main() {
     // Parse CLI arguments
@@ -44,15 +43,21 @@ async function main() {
 
         console.log(chalk.green('✅ CLI mode: Using provided parameters\n'));
 
+        // Display wallet addresses and balances, get user confirmation
+        const { displayWalletInfoAndConfirm } = await import('./utils/logger');
+        const confirmed = await displayWalletInfoAndConfirm();
+        if (!confirmed) {
+            process.exit(0);
+        }
+
         // Load configuration from CLI arguments
-        cfg = loadConfig(validation.mode!, validation.direction, validation.amount, validation.runs, validation.bridgeType);
+        cfg = loadConfig(validation.direction, validation.amount, validation.runs, validation.bridgeType);
         bridgeType = validation.bridgeType;
 
         // Display configuration summary
         console.log(chalk.bold('📋 Configuration:'));
         console.log(`  ${chalk.bold('Bridge:')}     ${chalk.cyan(bridgeType)}`);
         console.log(`  ${chalk.bold('Direction:')} ${chalk.cyan(validation.direction)}`);
-        console.log(`  ${chalk.bold('Mode:')}      ${chalk.cyan(validation.mode)}`);
         console.log(`  ${chalk.bold('Amount:')}    ${chalk.cyan(validation.amount)} XRP`);
         console.log(`  ${chalk.bold('Runs:')}      ${chalk.cyan(validation.runs)}`);
         console.log('');
@@ -66,41 +71,10 @@ async function main() {
         }
 
         // Bridge test mode - continue with bridge configuration
-        const menuResult = await showMenu(result.mode!);
+        const menuResult = await showMenu();
         cfg = menuResult.config;
         bridgeType = menuResult.bridgeType;
     }
-
-    // Display wallet addresses and get confirmation
-    console.log(chalk.bold('\n📍 Wallet Addresses'));
-    console.log(chalk.cyan('═'.repeat(60)));
-
-    const xrplWallet = getXrplWallet();
-    const evmAccount = getEvmAccount();
-
-    console.log(chalk.bold('XRPL Address: ') + chalk.green(xrplWallet.address));
-    console.log(chalk.bold('EVM Address:  ') + chalk.green(evmAccount.address));
-    console.log(chalk.cyan('═'.repeat(60)));
-
-    // Prompt for confirmation
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout
-    });
-
-    const answer = await new Promise<string>((resolve) => {
-        rl.question(chalk.yellow('\nContinue with these addresses? (Y/n): '), (ans) => {
-            rl.close();
-            resolve(ans.trim().toLowerCase());
-        });
-    });
-
-    if (answer === 'n' || answer === 'no') {
-        console.log(chalk.red('❌ Aborted by user'));
-        process.exit(0);
-    }
-
-    console.log(chalk.green('✅ Proceeding with bridge operations...\n'));
 
     logStep("configuration");
     logConfig(cfg);
@@ -131,6 +105,11 @@ async function main() {
             const runNumber = runIndex + 1;
             const separator = chalk.bold('═'.repeat(60));
 
+            // Add 10-second pause before each run (except the first) to avoid detecting previous run's transactions
+            if (runIndex > 0) {
+                await waitWithCountdown(10000, "Waiting before next run to avoid transaction conflicts...");
+            }
+
             console.log(`\n${separator}`);
             console.log(chalk.bold.cyan(`🔄 RUN ${runNumber}/${cfg.runs}`));
             console.log(separator);
@@ -140,6 +119,19 @@ async function main() {
             runCtx.runId = `${cfg.tag}_run${runNumber}`;
 
             try {
+                // Check balance before submitting
+                logStep("balance check");
+                const balanceCheck = await runner.checkBalance(runCtx);
+
+                console.log(chalk.cyan(`💰 ${balanceCheck.message}`));
+
+                if (!balanceCheck.sufficient) {
+                    console.log(chalk.red(`❌ Stopping batch at run ${runNumber}/${cfg.runs} due to insufficient balance`));
+                    console.log(chalk.yellow(`⚠️  Subsequent runs would fail with the same error, so stopping the entire batch.`));
+                    console.log(chalk.dim(`   This run will not be counted as a failure.`));
+                    break; // Stop the entire batch to avoid repeated failures
+                }
+
                 logStep("submit");
                 updateTimestamp(runCtx, 't1_submit');
                 const srcOutput = await runner.submit(runCtx);
@@ -153,18 +145,11 @@ async function main() {
                 updateTimestamp(runCtx, 't3_finalized', trgOutput.finalizedAt);
                 logObserve(runCtx, trgOutput);
 
+                // Gas refund observation removed - not applicable for mainnet
                 let gasRfdOutput;
-                
-                if (cfg.networks.mode === "testnet") {
-                    logStep(`gas refund`);
-                    await waitWithCountdown(10000, "Waiting for gas refund transaction...");
-                    gasRfdOutput = await runner.observeGasRefund(runCtx);
-                    updateTimestamp(runCtx, 't4_finalized_gas_refund', srcOutput.submittedAt);
-                    console.log(`⛽ Gas refund received: ${gasRfdOutput.xrpAmount} XRP (${gasRfdOutput.txHash})`);
-                }
 
                 logStep("record")
-                const record = createRunRecord(runCtx, srcOutput, trgOutput, true, gasRfdOutput);
+                const record = await createRunRecord(runCtx, srcOutput, trgOutput, true, gasRfdOutput);
                 logRecord(record);
 
                 records.push(record);
@@ -172,25 +157,51 @@ async function main() {
 
                 console.log(chalk.green(`✅ Run ${runNumber}/${cfg.runs} completed successfully`));
 
-                if (runIndex < cfg.runs - 1) {
-                    await waitWithCountdown(5000, "Preparing next run...");
+            } catch (err) {
+                // Handle data integrity exceptions
+                if (err instanceof BatchAbortedException) {
+                    console.log(chalk.red(`\n🛑 Batch aborted by user: ${err.message}`));
+                    console.log(chalk.yellow(`⚠️  No data will be saved for this batch.`));
+                    break; // Exit the run loop without saving any data
                 }
 
-            } catch (err) {
+                if (err instanceof RunIgnoredException) {
+                    console.log(chalk.yellow(`\n⚠️  Run ${runNumber}/${cfg.runs} ignored by user: ${err.message}`));
+                    console.log(chalk.dim(`   This run's data will not be saved.`));
+                    // Don't increment failureCount or add to records
+                    continue; // Skip to next run
+                }
+
+                // Handle regular errors
                 failureCount++;
                 const errorMessage = err instanceof Error ? err.message : String(err);
 
                 logError(`Run ${runNumber} failed`, "RUN_ERROR", err instanceof Error ? err : undefined);
 
-                const failedRecord = createRunRecord(
-                    runCtx,
-                    { xrpAmount: 0, txHash: runCtx.txs.sourceTxHash || "N/A", submittedAt: ctx.ts.t1_submit || 0, txFee: 0 },
-                    { xrpAmount: 0, txHash: runCtx.txs.targetTxHash || "N/A", finalizedAt: ctx.ts.t3_finalized || 0, txFee: 0 },
-                    false
-                );
-                failedRecord.abort_reason = errorMessage;
+                try {
+                    const failedRecord = await createRunRecord(
+                        runCtx,
+                        { xrpAmount: 0, txHash: runCtx.txs.sourceTxHash || "N/A", submittedAt: ctx.ts.t1_submit || 0, txFee: 0 },
+                        { xrpAmount: 0, txHash: runCtx.txs.targetTxHash || "N/A", finalizedAt: ctx.ts.t3_finalized || 0, txFee: 0 },
+                        false
+                    );
+                    failedRecord.abort_reason = errorMessage;
 
-                records.push(failedRecord);
+                    records.push(failedRecord);
+                } catch (recordErr) {
+                    // If creating the failed record also fails due to data integrity issues, handle it
+                    if (recordErr instanceof BatchAbortedException) {
+                        console.log(chalk.red(`\n🛑 Batch aborted by user while recording failure: ${(recordErr as Error).message}`));
+                        console.log(chalk.yellow(`⚠️  No data will be saved for this batch.`));
+                        break;
+                    }
+                    if (recordErr instanceof RunIgnoredException) {
+                        console.log(chalk.yellow(`\n⚠️  Failed run ${runNumber}/${cfg.runs} ignored by user`));
+                        continue;
+                    }
+                    // If it's some other error, rethrow
+                    throw recordErr;
+                }
 
                 console.log(chalk.red(`❌ Run ${runNumber}/${cfg.runs} failed: ${errorMessage}`));
             }

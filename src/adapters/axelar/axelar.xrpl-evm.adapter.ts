@@ -1,8 +1,6 @@
-import axios from "axios";
 import chalk from "chalk";
 import { Address, createPublicClient, createWalletClient, erc20Abi, formatEther, http, parseEther } from "viem";
-import { xrplevmTestnet } from "viem/chains";
-import { ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../../types";
+import { BalanceCheckResult, ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../../types";
 import { xrplevm } from "../../utils/chains";
 import { getEvmAccount, SQUID_INTEGRATOR_ID } from "../../utils/environment";
 
@@ -25,7 +23,7 @@ export const evmAdapter: ChainAdapter = {
     async prepare(ctx: RunContext) {
         const rpcUrl = ctx.cfg.networks.evm.rpcUrl;
 
-        const chain = ctx.cfg.networks.mode === "mainnet" ? xrplevm : xrplevmTestnet;
+        const chain = xrplevm; // Only mainnet is supported
 
         const publicClient = createPublicClient({
             chain: chain,
@@ -76,20 +74,28 @@ export const evmAdapter: ChainAdapter = {
             try {
                 console.log(chalk.cyan(`🔄 Route attempt ${attempt}/${maxRetries}...`));
 
-                const result = await axios.post(
+                const result = await fetch(
                     "https://v2.api.squidrouter.com/v2/route",
-                    params,
                     {
+                        method: 'POST',
                         headers: {
                             "x-integrator-id": SQUID_INTEGRATOR_ID,
                             "Content-Type": "application/json",
                         },
+                        body: JSON.stringify(params)
                     }
                 );
 
-                const requestId = result.headers["x-request-id"];
+                if (!result.ok) {
+                    const errorData = await result.json().catch(() => ({}));
+                    const errorMsg = errorData.message || errorData || 'Unknown error';
+                    throw new Error(`HTTP ${result.status}: ${errorMsg}`);
+                }
+
+                const requestId = result.headers.get("x-request-id") || '';
+                const data = await result.json();
                 ctx.cache.squid = {
-                    route: result.data.route,
+                    route: data.route,
                     requestId
                 };
 
@@ -97,8 +103,8 @@ export const evmAdapter: ChainAdapter = {
                 return;
             } catch (error: any) {
                 lastError = error;
-                const errorMsg = error.response?.data?.message || error.response?.data || error.message || 'Unknown error';
-                const statusCode = error.response?.status || 'N/A';
+                const errorMsg = error.message || 'Unknown error';
+                const statusCode = error.message?.includes('HTTP') ? error.message.split(':')[0] : 'N/A';
 
                 console.log(chalk.red(`❌ Route attempt ${attempt}/${maxRetries} failed (${statusCode}): ${errorMsg}`));
 
@@ -117,6 +123,34 @@ export const evmAdapter: ChainAdapter = {
         }
 
         throw new Error(`Failed to get Squid route: ${lastError?.message || 'Unknown error'}`);
+    },
+
+    /** Check if wallet has sufficient balance for the transaction */
+    async checkBalance(ctx: RunContext): Promise<BalanceCheckResult> {
+        const { publicClient, account } = ctx.cache.evm!;
+        if (!publicClient || !account) throw new Error("EVM not prepared");
+
+        // Get current balance in wei
+        const balanceWei = await publicClient.getBalance({ address: account.address as `0x${string}` });
+        const currentBalance = Number(formatEther(balanceWei));
+
+        // Calculate required balance:
+        // - Transfer amount
+        // - Gas fee margin (estimate 0.1 XRP for gas fees to be safe)
+        const feeMargin = 0.1;
+        const requiredBalance = ctx.cfg.xrpAmount + feeMargin;
+
+        const sufficient = currentBalance >= requiredBalance;
+
+        return {
+            sufficient,
+            currentBalance,
+            requiredBalance,
+            currency: 'XRP',
+            message: sufficient
+                ? `Balance sufficient: ${currentBalance.toFixed(4)} XRP (need ${requiredBalance.toFixed(4)} XRP)`
+                : `Insufficient balance: ${currentBalance.toFixed(4)} XRP (need ${requiredBalance.toFixed(4)} XRP including ${feeMargin} XRP fee margin)`
+        };
     },
 
     async submit(ctx: RunContext): Promise<SourceOutput> {
@@ -187,10 +221,13 @@ export const evmAdapter: ChainAdapter = {
 
         const timeoutMs = 10 * 60_000;
 
-        // Get starting block
-        const startBlock = await publicClient.getBlockNumber();
+        // Get starting block - start from current block to catch instant bridges
+        // There's already a 10s wait between runs in index.ts, so no need to skip blocks
+        const currentBlock = await publicClient.getBlockNumber();
+        const startBlock = currentBlock;
 
         console.log(chalk.cyan(`🔍 Watching for XRP token transfers TO ${account.address} on XRPL-EVM (from block ${startBlock})`));
+        console.log(chalk.dim(`   Starting from current block ${currentBlock} to catch instant bridges`));
 
         return await new Promise<TargetOutput>((resolve, reject) => {
             let finished = false;

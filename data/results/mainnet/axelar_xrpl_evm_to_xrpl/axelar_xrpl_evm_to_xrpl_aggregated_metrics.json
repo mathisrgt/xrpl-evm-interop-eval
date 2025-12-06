@@ -1,39 +1,38 @@
 {
   "summary": {
-    "timestampIso": "2025-12-03T16:19:19.161Z",
+    "timestampIso": "2025-12-06T13:08:50.678Z",
     "tag": "mainnet_axelar_xrpl_evm_to_xrpl_aggregated",
     "bridgeName": "axelar",
     "direction": "xrpl_evm_to_xrpl",
-    "xrpAmount": 4,
-    "currency": "XRP",
-    "runsPlanned": 6,
-    "totalRuns": 6,
-    "successCount": 6,
+    "transferAmount": 0,
+    "transferAmountUsd": 0,
+    "runsPlanned": 9,
+    "totalRuns": 9,
+    "successCount": 9,
     "failureCount": 0,
     "successRate": 1,
     "latency": {
-      "n": 6,
-      "minMs": 10352,
-      "p50Ms": 70620,
-      "p90Ms": 88885.5,
-      "p95Ms": 88941.25,
-      "p99Ms": 88985.84999999999,
-      "maxMs": 88997,
-      "meanMs": 57479.666666666664,
-      "stdDevMs": 32429.920688908398
+      "n": 9,
+      "minMs": 9208,
+      "p50Ms": 72871,
+      "p90Ms": 89590.40000000001,
+      "p95Ms": 90777.2,
+      "maxMs": 91964,
+      "meanMs": 57664.333333333336,
+      "stdDevMs": 33446.30284833022
     },
     "costs": {
-      "n": 6,
-      "meanTotal": 4.093323725,
-      "minTotal": 4.093323725,
-      "maxTotal": 4.093323725,
-      "stdDevTotal": 0,
-      "meanBridge": 3.999999,
-      "meanSourceFee": 0.09332372499999998,
-      "meanTargetFee": 0.11000366666666668
+      "n": 9,
+      "meanTotalUsd": 4.093323725,
+      "minTotalUsd": 4.093323725,
+      "maxTotalUsd": 4.093323725,
+      "stdDevTotalUsd": 0,
+      "meanBridgeUsd": 3.9999990000000003,
+      "meanSourceFeeUsd": 0.09332372499999998,
+      "meanTargetFeeUsd": 0.11000366666666668
     },
-    "batchDurationMs": 370542
+    "batchDurationMs": 557624
   },
-  "batchCount": 2,
-  "lastUpdated": "2025-12-03T16:19:19.161Z"
+  "batchCount": 3,
+  "lastUpdated": "2025-12-06T13:08:50.678Z"
 }

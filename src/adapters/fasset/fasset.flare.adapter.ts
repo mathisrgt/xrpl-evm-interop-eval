@@ -1,7 +1,7 @@
 import chalk from "chalk";
-import { Address, createPublicClient, createWalletClient, formatEther, http } from "viem";
+import { Address, createPublicClient, createWalletClient, erc20Abi, formatEther, http } from "viem";
 import { flare } from "viem/chains";
-import { ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../../types";
+import { BalanceCheckResult, ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../../types";
 import { getEvmAccount } from "../../utils/environment";
 
 // FXRP Token Address on Flare
@@ -79,6 +79,54 @@ export const flareAdapter: ChainAdapter = {
         console.log(chalk.dim(`   FXRP Token: ${FXRP_TOKEN_ADDRESS}`));
     },
 
+    /** Check if wallet has sufficient balance for the transaction */
+    async checkBalance(ctx: RunContext): Promise<BalanceCheckResult> {
+        const { publicClient, account } = ctx.cache.evm!;
+        if (!publicClient || !account) throw new Error("EVM not prepared");
+
+        // For Flare, we need FXRP for the transfer + FLR for gas
+        const fxrpAmount = ctx.cfg.xrpAmount; // FXRP amount needed
+
+        // Get FXRP token balance
+        const fxrpBal = await publicClient.readContract({
+            address: FXRP_TOKEN_ADDRESS,
+            abi: erc20Abi,
+            functionName: 'balanceOf',
+            args: [account.address as `0x${string}`]
+        });
+        const currentFxrpBalance = Number(formatEther(fxrpBal as bigint));
+
+        // Get FLR balance for gas
+        const flrBalWei = await publicClient.getBalance({ address: account.address as `0x${string}` });
+        const currentFlrBalance = Number(formatEther(flrBalWei));
+
+        // Calculate required balances
+        const requiredFxrpBalance = fxrpAmount;
+        const minFlrForGas = 0.1; // Minimum 0.1 FLR for gas fees
+
+        const sufficientFxrp = currentFxrpBalance >= requiredFxrpBalance;
+        const sufficientFlr = currentFlrBalance >= minFlrForGas;
+        const sufficient = sufficientFxrp && sufficientFlr;
+
+        let message = '';
+        if (sufficient) {
+            message = `Balance sufficient: ${currentFxrpBalance.toFixed(4)} FXRP (need ${requiredFxrpBalance.toFixed(4)} FXRP), ${currentFlrBalance.toFixed(4)} FLR (need ${minFlrForGas} FLR for gas)`;
+        } else {
+            const issues = [];
+            if (!sufficientFxrp) issues.push(`FXRP: ${currentFxrpBalance.toFixed(4)}/${requiredFxrpBalance.toFixed(4)}`);
+            if (!sufficientFlr) issues.push(`FLR: ${currentFlrBalance.toFixed(4)}/${minFlrForGas} (for gas)`);
+            message = `Insufficient balance: ${issues.join(', ')}`;
+        }
+
+        return {
+            sufficient,
+            currentBalance: currentFxrpBalance,
+            requiredBalance: requiredFxrpBalance,
+            currency: 'FXRP',
+            message
+        };
+    },
+
     /**
      * SUBMIT: Watch for OUTGOING FXRP token transfer (manual bridge initiation)
      * This function waits for the user to manually send FXRP tokens to a FAsset redemption address
@@ -95,10 +143,14 @@ export const flareAdapter: ChainAdapter = {
         console.log(chalk.cyan('═'.repeat(60)));
 
         const timeoutMs = 10 * 60_000; // 10 minutes
-        const startBlock = await publicClient.getBlockNumber();
+
+        // Get starting block - start from current block to catch instant bridges
+        // There's already a 10s wait between runs in index.ts, so no need to skip blocks
+        const currentBlock = await publicClient.getBlockNumber();
+        const startBlock = currentBlock;
 
         console.log(chalk.cyan(`🔍 Watching for OUTGOING FXRP transfer from ${account.address}...`));
-        console.log(chalk.dim(`   Starting from block ${startBlock}`));
+        console.log(chalk.dim(`   Starting from block ${startBlock} to catch instant bridges`));
         console.log(chalk.dim(`   Waiting for transfer ≥ ${ctx.cfg.xrpAmount} FXRP`));
 
         return await new Promise<SourceOutput>((resolve, reject) => {
@@ -283,10 +335,14 @@ export const flareAdapter: ChainAdapter = {
 
         const timeoutMs = 10 * 60_000;
         const depositAddress = (ctx.cache.evm as any).depositAddress;
-        const startBlock = await publicClient.getBlockNumber();
+
+        // Get starting block - start from current block to catch instant bridges
+        // There's already a 10s wait between runs in index.ts, so no need to skip blocks
+        const currentBlock = await publicClient.getBlockNumber();
+        const startBlock = currentBlock;
 
         console.log(chalk.cyan(`\n🔍 Watching for INCOMING FXRP transfer to ${account.address}...`));
-        console.log(chalk.dim(`   Starting from block ${startBlock}`));
+        console.log(chalk.dim(`   Starting from block ${startBlock} to catch instant bridges`));
         if (depositAddress) {
             console.log(chalk.dim(`   Excluding transfers FROM deposit address: ${depositAddress}`));
         }

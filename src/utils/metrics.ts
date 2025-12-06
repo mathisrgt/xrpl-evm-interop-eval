@@ -13,14 +13,15 @@ export interface LatencyStats {
 
 export interface CostsStats {
   n: number;
-  meanTotal: number | null;
-  minTotal: number | null;
-  maxTotal: number | null;
-  stdDevTotal: number | null;
+  // All cost stats are now in USD for unified metrics
+  meanTotalUsd: number | null;
+  minTotalUsd: number | null;
+  maxTotalUsd: number | null;
+  stdDevTotalUsd: number | null;
 
-  meanBridge: number | null;
-  meanSourceFee: number | null;
-  meanTargetFee: number | null;
+  meanBridgeUsd: number | null;
+  meanSourceFeeUsd: number | null;
+  meanTargetFeeUsd: number | null;
 }
 
 export interface MetricsSummary {
@@ -29,8 +30,8 @@ export interface MetricsSummary {
   bridgeName: string;
 
   direction: string;
-  xrpAmount: number;
-  currency: string;
+  transferAmount: number; // Amount transferred per transaction (native currency)
+  transferAmountUsd: number; // Amount transferred in USD (for comparison)
   runsPlanned: number;
 
   totalRuns: number;
@@ -39,7 +40,7 @@ export interface MetricsSummary {
   successRate: number;
 
   latency: LatencyStats;
-  costs: CostsStats;
+  costs: CostsStats; // All costs in USD
 
   batchDurationMs: number;
 }
@@ -88,15 +89,16 @@ function e2eLatencyMs(r: RunRecord): number | null {
   return Math.max(0, t3 - t1);
 }
 
-/** Best-effort total cost in XRP - using correct property names */
-function totalCostXrp(r: RunRecord): number | null {
+/** Get total cost in USD - using USD values from RunCosts */
+function totalCostUsd(r: RunRecord): number | null {
   const c = r.costs;
   if (!c) return null;
-  
-  // Use the actual property names from RunCosts
-  if (typeof c.totalCost === "number") return c.totalCost;
 
-  const parts = [c.bridgeFee, c.sourceFee, c.targetFee]
+  // Use the USD values from RunCosts
+  if (typeof c.totalCostUsd === "number") return c.totalCostUsd;
+
+  // Fallback: sum individual USD fees if total not available
+  const parts = [c.bridgeFeeUsd, c.sourceFeeUsd, c.targetFeeUsd]
     .filter((x): x is number => typeof x === "number");
 
   return parts.length ? parts.reduce((s: number, x: number) => s + x, 0) : null;
@@ -129,33 +131,33 @@ export function computeMetrics(cfg: RunConfig, records: RunRecord[], batchDurati
     stdDevMs: stddev(latencies),
   };
 
-  // Extract costs using correct property names
-  const totals = successes
-    .map(totalCostXrp)
+  // Extract USD costs from RunCosts
+  const totalsUsd = successes
+    .map(totalCostUsd)
     .filter((x): x is number => typeof x === "number");
-  const totalsSorted = [...totals].sort(byNumberAsc);
+  const totalsSortedUsd = [...totalsUsd].sort(byNumberAsc);
 
-  // Use actual property names from RunCosts interface
-  const bridgeArr = successes
-    .map(r => r.costs?.bridgeFee)
+  // Use USD property names from RunCosts interface
+  const bridgeArrUsd = successes
+    .map(r => r.costs?.bridgeFeeUsd)
     .filter((x): x is number => typeof x === "number");
-  const sourceArr = successes
-    .map(r => r.costs?.sourceFee)
+  const sourceArrUsd = successes
+    .map(r => r.costs?.sourceFeeUsd)
     .filter((x): x is number => typeof x === "number");
-  const targetArr = successes
-    .map(r => r.costs?.targetFee)
+  const targetArrUsd = successes
+    .map(r => r.costs?.targetFeeUsd)
     .filter((x): x is number => typeof x === "number");
 
   const costStats: CostsStats = {
-    n: totals.length,
-    meanTotal: mean(totals),
-    minTotal: totals.length ? totalsSorted[0] : null,
-    maxTotal: totals.length ? totalsSorted[totalsSorted.length - 1] : null,
-    stdDevTotal: stddev(totals),
+    n: totalsUsd.length,
+    meanTotalUsd: mean(totalsUsd),
+    minTotalUsd: totalsUsd.length ? totalsSortedUsd[0] : null,
+    maxTotalUsd: totalsUsd.length ? totalsSortedUsd[totalsSortedUsd.length - 1] : null,
+    stdDevTotalUsd: stddev(totalsUsd),
 
-    meanBridge: mean(bridgeArr),
-    meanSourceFee: mean(sourceArr),
-    meanTargetFee: mean(targetArr),
+    meanBridgeUsd: mean(bridgeArrUsd),
+    meanSourceFeeUsd: mean(sourceArrUsd),
+    meanTargetFeeUsd: mean(targetArrUsd),
   };
 
   const totalRuns = records.length;
@@ -163,16 +165,16 @@ export function computeMetrics(cfg: RunConfig, records: RunRecord[], batchDurati
   const failureCount = totalRuns - successCount;
   const successRate = totalRuns ? successCount / totalRuns : 0;
 
-  // Determine currency based on bridge name
-  const currency = cfg.bridgeName === 'near-intents' ? 'USD' : 'XRP';
-
+  // Note: transferAmountUsd will be computed later when we have price data
+  // For now, we'll just use the xrpAmount and set transferAmountUsd to 0
+  // This will be properly set when metrics are saved/displayed
   const summary: MetricsSummary = {
     timestampIso: new Date().toISOString(),
     tag: cfg.tag,
     bridgeName: cfg.bridgeName,
     direction: cfg.direction,
-    xrpAmount: cfg.xrpAmount,
-    currency,
+    transferAmount: cfg.xrpAmount, // Native currency amount
+    transferAmountUsd: 0, // Will be computed when displaying metrics
     runsPlanned: cfg.runs,
     totalRuns,
     successCount,

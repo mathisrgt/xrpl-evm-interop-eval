@@ -1,9 +1,40 @@
 import { Address, createPublicClient, createWalletClient, erc20Abi, formatEther, formatUnits, http, parseUnits } from "viem";
-import { ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../../types";
+import chalk from "chalk";
+import { BalanceCheckResult, ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../../types";
 import { base } from "../../utils/chains";
 import { NEAR_INTENTS_TOKEN_IDS, USDC_BASE_ADDRESS } from "../../utils/constants";
 import { getEvmAccount, ONE_CLICK_JWT } from "../../utils/environment";
 import { OneClickService, OpenAPI, QuoteRequest } from "@defuse-protocol/one-click-sdk-typescript";
+import { convertToUsd } from "../../utils/price-converter";
+import { askPriceConversionAction, BatchAbortedException, RunIgnoredException } from "../../utils/data-integrity";
+
+/**
+ * Helper function to fetch XRP price with retry logic and user prompts
+ */
+async function fetchXrpPriceWithRetry(): Promise<number> {
+    let retries = 3;
+
+    while (true) {
+        try {
+            const price = await convertToUsd(1, 'XRP');
+            return price;
+        } catch (error) {
+            retries--;
+            if (retries === 0) {
+                const action = await askPriceConversionAction('XRP', 1, error as Error);
+
+                if (action === 'retry') {
+                    retries = 3; // Reset retries
+                    continue;
+                } else if (action === 'ignore-run') {
+                    throw new RunIgnoredException('User chose to ignore run due to failed XRP price fetch');
+                } else if (action === 'abort-batch') {
+                    throw new BatchAbortedException('User chose to abort batch due to failed XRP price fetch');
+                }
+            }
+        }
+    }
+}
 
 export const baseAdapter: ChainAdapter = {
 
@@ -23,6 +54,62 @@ export const baseAdapter: ChainAdapter = {
         ctx.cache.evm = { publicClient, walletClient, account, chain: base };
     },
 
+    /** Check if wallet has sufficient balance for the transaction */
+    async checkBalance(ctx: RunContext): Promise<BalanceCheckResult> {
+        const { publicClient, account } = ctx.cache.evm!;
+        if (!publicClient || !account) throw new Error("EVM not prepared");
+
+        // Fetch real XRP price to calculate accurate USDC amount needed
+        console.log(chalk.cyan('💱 Fetching XRP price...'));
+        const xrpPriceUsd = await fetchXrpPriceWithRetry();
+        console.log(chalk.dim(`   XRP price: $${xrpPriceUsd.toFixed(4)}`));
+
+        // Calculate USDC needed: XRP amount * XRP price + 10% slippage buffer
+        const slippageBuffer = 1.10; // 10% buffer for price slippage and fees
+        const usdcAmount = ctx.cfg.xrpAmount * xrpPriceUsd * slippageBuffer;
+
+        console.log(chalk.dim(`   USDC needed: ${ctx.cfg.xrpAmount} XRP × $${xrpPriceUsd.toFixed(4)} × ${slippageBuffer} = ${usdcAmount.toFixed(2)} USDC`));
+
+        // Get USDC balance
+        const usdcBal = await publicClient.readContract({
+            address: USDC_BASE_ADDRESS,
+            abi: erc20Abi,
+            functionName: 'balanceOf',
+            args: [account.address as `0x${string}`]
+        });
+        const currentUsdcBalance = Number(formatUnits(usdcBal as bigint, 6));
+
+        // Get ETH balance for gas
+        const ethBalWei = await publicClient.getBalance({ address: account.address as `0x${string}` });
+        const currentEthBalance = Number(formatEther(ethBalWei));
+
+        // Calculate required balances
+        const requiredUsdcBalance = usdcAmount;
+        const minEthForGas = 0.001; // Minimum 0.001 ETH for gas fees
+
+        const sufficientUsdc = currentUsdcBalance >= requiredUsdcBalance;
+        const sufficientEth = currentEthBalance >= minEthForGas;
+        const sufficient = sufficientUsdc && sufficientEth;
+
+        let message = '';
+        if (sufficient) {
+            message = `Balance sufficient: ${currentUsdcBalance.toFixed(2)} USDC (need ${requiredUsdcBalance.toFixed(2)} USDC), ${currentEthBalance.toFixed(4)} ETH (need ${minEthForGas} ETH for gas)`;
+        } else {
+            const issues = [];
+            if (!sufficientUsdc) issues.push(`USDC: ${currentUsdcBalance.toFixed(2)}/${requiredUsdcBalance.toFixed(2)}`);
+            if (!sufficientEth) issues.push(`ETH: ${currentEthBalance.toFixed(4)}/${minEthForGas} (for gas)`);
+            message = `Insufficient balance: ${issues.join(', ')}`;
+        }
+
+        return {
+            sufficient,
+            currentBalance: currentUsdcBalance,
+            requiredBalance: requiredUsdcBalance,
+            currency: 'USDC',
+            message
+        };
+    },
+
     async submit(ctx: RunContext): Promise<SourceOutput> {
         const { account, walletClient, publicClient } = ctx.cache.evm!;
         const { wallet: xrplWallet } = ctx.cache.xrpl!;
@@ -34,11 +121,21 @@ export const baseAdapter: ChainAdapter = {
         OpenAPI.BASE = 'https://1click.chaindefuser.com';
         OpenAPI.TOKEN = ONE_CLICK_JWT;
 
-        const usdcAmount = parseUnits((ctx.cfg.xrpAmount * 2).toString(), 6);
+        // Fetch real XRP price to calculate accurate USDC amount needed
+        console.log(chalk.cyan('💱 Fetching XRP price...'));
+        const xrpPriceUsd = await fetchXrpPriceWithRetry();
+        console.log(chalk.dim(`   XRP price: $${xrpPriceUsd.toFixed(4)}`));
+
+        // Calculate USDC needed: XRP amount * XRP price + 10% slippage buffer
+        const slippageBuffer = 1.10; // 10% buffer for price slippage and fees
+        const usdcAmountFloat = ctx.cfg.xrpAmount * xrpPriceUsd * slippageBuffer;
+        const usdcAmount = parseUnits(usdcAmountFloat.toFixed(6), 6); // Convert to USDC units (6 decimals)
+
+        console.log(chalk.dim(`   USDC needed: ${ctx.cfg.xrpAmount} XRP × $${xrpPriceUsd.toFixed(4)} × ${slippageBuffer} = ${usdcAmountFloat.toFixed(2)} USDC`));
 
         console.log(`\n📋 Near Intents Quote Request:`);
         console.log(`   Origin: USDC on Base → Destination: XRP on XRPL`);
-        console.log(`   Amount: ${formatUnits(usdcAmount, 6)} USDC`);
+        console.log(`   Amount: ${formatUnits(usdcAmount, 6)} USDC (${ctx.cfg.xrpAmount} XRP at $${xrpPriceUsd.toFixed(4)})`);
         console.log(`   Recipient (XRPL): ${xrplWallet.address}`);
         console.log(`   Refund To (Base): ${account.address}`);
 
@@ -131,8 +228,9 @@ export const baseAdapter: ChainAdapter = {
         const gasFeeWei = gasUsed * effectiveGasPrice;
         const txFee = Number(formatEther(gasFeeWei));
 
-        // For near-intents, xrpAmount represents USD value (USDC amount / 1)
-        return { xrpAmount: ctx.cfg.xrpAmount, txHash, submittedAt, txFee, currency: 'USD' };
+        // For near-intents Base→XRPL, we send USDC (native stablecoin on source chain)
+        // Record the actual USDC amount sent
+        return { xrpAmount: usdcAmountFloat, txHash, submittedAt, txFee, currency: 'USDC' };
     },
 
     async observe(ctx: RunContext): Promise<TargetOutput> {
@@ -141,16 +239,20 @@ export const baseAdapter: ChainAdapter = {
 
         const timeoutMs = 10 * 60_000; // 10 minutes timeout
 
-        // Use the block where we submitted, or current block if not available
+        // Get starting block - start from current block to catch instant bridges
+        // There's already a 10s wait between runs in index.ts, so no need to skip blocks
         const submitBlockNumber = (ctx.cache.evm as any).submitBlockNumber;
-        const startBlock = submitBlockNumber || await publicClient.getBlockNumber();
+        const currentBlock = await publicClient.getBlockNumber();
+        const startBlock = submitBlockNumber || currentBlock;
 
         console.log(`🔍 Watching for USDC transfers TO ${account.address} on Base (from block ${startBlock})`);
         if (submitBlockNumber) {
-            console.log(`   Starting from submit block: ${submitBlockNumber}`);
+            console.log(chalk.dim(`   Starting from submit block: ${submitBlockNumber}`));
+        } else {
+            console.log(chalk.dim(`   Starting from current block ${currentBlock} to catch instant bridges`));
         }
         if (depositAddress) {
-            console.log(`   Excluding transfers FROM deposit address: ${depositAddress}`);
+            console.log(chalk.dim(`   Excluding transfers FROM deposit address: ${depositAddress}`));
         }
 
         return await new Promise<TargetOutput>((resolve, reject) => {
@@ -252,12 +354,13 @@ export const baseAdapter: ChainAdapter = {
                             const gasFeeWei = gasUsed * effectiveGasPrice;
                             const txFee = Number(formatEther(gasFeeWei));
 
+                            // For near-intents XRPL→Base, we receive USDC (stablecoin on target chain)
                             resolveOnce({
                                 xrpAmount: targetAmount,
                                 txHash: log.transactionHash as Address,
                                 finalizedAt: Date.now(),
                                 txFee,
-                                currency: 'USD',
+                                currency: 'USDC',
                             });
                         }
 

@@ -47,12 +47,11 @@ export class Runner {
      */
     private async prepareEvmOnly(ctx: RunContext): Promise<void> {
         const { createPublicClient, createWalletClient, http } = await import("viem");
-        const { xrplevmTestnet } = await import("viem/chains");
         const { xrplevm } = await import("../utils/chains");
         const { getEvmAccount } = await import("../utils/environment");
 
         const rpcUrl = ctx.cfg.networks.evm.rpcUrl;
-        const chain = ctx.cfg.networks.mode === "mainnet" ? xrplevm : xrplevmTestnet;
+        const chain = xrplevm; // Only mainnet is supported
 
         const publicClient = createPublicClient({
             chain: chain,
@@ -82,6 +81,13 @@ export class Runner {
         const wallet = getXrplWallet();
         ctx.cache.xrpl = { client, wallet };
         ctx.cleaner.trackXrpl(client, wallet.address);
+    }
+
+    /**
+     * Check if source wallet has sufficient balance for the transaction
+     */
+    async checkBalance(ctx: RunContext) {
+        return await this.sourceAdapter.checkBalance(ctx);
     }
 
     /**
