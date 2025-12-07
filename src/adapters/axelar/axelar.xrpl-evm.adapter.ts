@@ -221,13 +221,12 @@ export const evmAdapter: ChainAdapter = {
 
         const timeoutMs = 10 * 60_000;
 
-        // Get starting block - start from current block to catch instant bridges
         // There's already a 10s wait between runs in index.ts, so no need to skip blocks
         const currentBlock = await publicClient.getBlockNumber();
         const startBlock = currentBlock;
 
         console.log(chalk.cyan(`🔍 Watching for XRP token transfers to ${account.address} on XRPL-EVM (from block ${startBlock})`));
-        console.log(chalk.dim(`   Starting from current block ${currentBlock} to catch instant bridges`));
+        console.log(chalk.dim(`   Starting from current block ${currentBlock}`));
 
         return await new Promise<TargetOutput>((resolve, reject) => {
             let finished = false;
@@ -278,8 +277,17 @@ export const evmAdapter: ChainAdapter = {
                         console.log(chalk.dim(`   Found ${logs.length} token transfer(s) to account`));
                     }
 
+                    // Filter out the previous transaction if it exists
+                    const filteredLogs = logs.filter(log => {
+                        if (ctx.previousTargetTxHash && log.transactionHash === ctx.previousTargetTxHash) {
+                            console.log(chalk.dim(`   Ignoring previous run's transaction (hash: ${log.transactionHash?.substring(0, 10)}...)`));
+                            return false;
+                        }
+                        return true;
+                    });
+
                     // Take the first incoming transfer
-                    const log = logs.length > 0 ? logs[0] : undefined;
+                    const log = filteredLogs.length > 0 ? filteredLogs[0] : undefined;
 
                     if (log) {
                         const from = (log as any).args?.from as string;

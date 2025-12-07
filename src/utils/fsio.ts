@@ -228,7 +228,7 @@ export function computeDirectionSummary(direction: NetworkDirection, bridgeName:
   }
 
   const batchFolders = fs.readdirSync(directionFolder, { withFileTypes: true })
-    .filter(dirent => dirent.isDirectory())
+    .filter(dirent => dirent.isDirectory() && !dirent.name.includes('deprecated'))
     .map(dirent => dirent.name);
 
   if (batchFolders.length === 0) {
@@ -453,7 +453,7 @@ export function recomputeDirectionMetrics(bridgeName: string, direction: Network
 
   // Rebuild the direction summary CSV from all batch metrics
   const batchFolders = fs.readdirSync(directionFolder, { withFileTypes: true })
-    .filter(dirent => dirent.isDirectory())
+    .filter(dirent => dirent.isDirectory() && !dirent.name.includes('deprecated'))
     .map(dirent => dirent.name);
 
   const csvRows: Array<Record<string, string | number>> = [];
@@ -529,9 +529,9 @@ export function recomputeAllMetricsCsv(): { count: number; stats: { modes: numbe
   let totalDirections = 0;
   let totalBatches = 0;
 
-  // Iterate through all modes (mainnet, testnet, etc.)
+  // Iterate through all modes (mainnet, testnet, etc.) - exclude deprecated folder
   const modes = fs.readdirSync(resultsFolder, { withFileTypes: true })
-    .filter(dirent => dirent.isDirectory())
+    .filter(dirent => dirent.isDirectory() && !dirent.name.includes('deprecated'))
     .map(dirent => dirent.name);
 
   totalModes = modes.length;

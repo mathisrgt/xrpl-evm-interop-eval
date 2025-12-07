@@ -94,6 +94,7 @@ async function main() {
     let failureCount = 0;
     const batchStartTime = Date.now();
     const ctx = createRunContext(cfg);
+    let previousTargetTxHash: string | undefined;
 
     try {
         logStep("prepare");
@@ -105,11 +106,6 @@ async function main() {
             const runNumber = runIndex + 1;
             const separator = chalk.bold('═'.repeat(60));
 
-            // Add 30-second pause before each run (except the first) to avoid detecting previous run's transactions
-            if (runIndex > 0) {
-                await waitWithCountdown(30000, "Waiting before next run to avoid transaction conflicts...");
-            }
-
             console.log(`\n${separator}`);
             console.log(chalk.bold.cyan(`🔄 RUN ${runNumber}/${cfg.runs}`));
             console.log(separator);
@@ -117,6 +113,7 @@ async function main() {
             const runCtx = createRunContext(cfg);
             runCtx.cache = ctx.cache;
             runCtx.runId = `${cfg.tag}_run${runNumber}`;
+            runCtx.previousTargetTxHash = previousTargetTxHash;
 
             try {
                 // Check balance before submitting
@@ -144,6 +141,9 @@ async function main() {
                 updateTxHash(runCtx, 'targetTxHash', trgOutput.txHash);
                 updateTimestamp(runCtx, 't3_finalized', trgOutput.finalizedAt);
                 logObserve(runCtx, trgOutput);
+
+                // Save the target transaction hash to exclude from the next run
+                previousTargetTxHash = trgOutput.txHash;
 
                 // Gas refund observation removed - not applicable for mainnet
                 let gasRfdOutput;

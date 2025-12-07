@@ -143,6 +143,7 @@ export interface RunContext {
     runId: string,
     ts: RunTimestamps;
     txs: RunTxs;
+    previousTargetTxHash?: string; // Transaction hash from previous run to exclude from observation
     cache: {
         xrpl?: {
             client: import("xrpl").Client;

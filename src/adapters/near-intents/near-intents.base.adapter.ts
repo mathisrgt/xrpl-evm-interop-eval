@@ -240,7 +240,6 @@ export const baseAdapter: ChainAdapter = {
 
         const timeoutMs = 10 * 60_000; // 10 minutes timeout
 
-        // Get starting block - start from current block to catch instant bridges
         // There's already a 10s wait between runs in index.ts, so no need to skip blocks
         const submitBlockNumber = (ctx.cache.evm as any).submitBlockNumber;
         const currentBlock = await publicClient.getBlockNumber();
@@ -250,7 +249,7 @@ export const baseAdapter: ChainAdapter = {
         if (submitBlockNumber) {
             console.log(chalk.dim(`   Starting from submit block: ${submitBlockNumber}`));
         } else {
-            console.log(chalk.dim(`   Starting from current block ${currentBlock} to catch instant bridges`));
+            console.log(chalk.dim(`   Starting from current block ${currentBlock}`));
         }
         if (depositAddress) {
             console.log(chalk.dim(`   Excluding transfers FROM deposit address: ${depositAddress}`));
@@ -320,6 +319,12 @@ export const baseAdapter: ChainAdapter = {
                             const from = (log as any).args?.from as string | undefined;
                             const fromLower = from?.toLowerCase();
                             const depositLower = depositAddress?.toLowerCase();
+
+                            // Skip if this is the same transaction hash from the previous run
+                            if (ctx.previousTargetTxHash && log.transactionHash === ctx.previousTargetTxHash) {
+                                console.log(`   Skipping previous run's transaction (hash: ${log.transactionHash?.substring(0, 10)}...)`);
+                                return false;
+                            }
 
                             // Exclude transfers FROM the deposit address (our outgoing transfer)
                             if (depositLower && fromLower === depositLower) {

@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { Address, createPublicClient, createWalletClient, erc20Abi, formatEther, http } from "viem";
+import { Address, createPublicClient, createWalletClient, erc20Abi, formatEther, formatUnits, http } from "viem";
 import { flare } from "viem/chains";
 import { BalanceCheckResult, ChainAdapter, GasRefundOutput, RunContext, SourceOutput, TargetOutput } from "../../types";
 import { getEvmAccount } from "../../utils/environment";
@@ -339,7 +339,7 @@ export const flareAdapter: ChainAdapter = {
 
                             // Log transfer for visibility
                             if (value) {
-                                const amountInFxrp = Number(formatEther(value));
+                                const amountInFxrp = Number(formatUnits(value, fxrpDecimals));
                                 console.log(chalk.dim(`   Transfer: ${amountInFxrp} FXRP (raw: ${value}) to ${to}`));
                             }
 
@@ -365,14 +365,13 @@ export const flareAdapter: ChainAdapter = {
                             console.log(chalk.dim(`   [DEBUG] Token address: ${log.address}`));
                             console.log(chalk.dim(`   [DEBUG] Expected token: ${FXRP_TOKEN_ADDRESS}`));
 
-                            const transferAmount = value ? Number(formatEther(value)) : 0;
+                            const transferAmount = value ? Number(formatUnits(value, fxrpDecimals)) : 0;
 
                             console.log(chalk.green(`\n✅ Found OUTGOING FXRP transfer!`));
                             console.log(chalk.dim(`   To: ${to}`));
                             console.log(chalk.dim(`   Amount: ${transferAmount} FXRP (raw: ${value})`));
                             console.log(chalk.dim(`   Tx: ${log.transactionHash}`));
                             console.log(chalk.dim(`   Explorer: https://flare-explorer.flare.network/tx/${log.transactionHash}`));
-                            console.log(chalk.yellow(`   Note: Amount formatting may be incorrect due to token decimals`));
 
                             const receipt = await publicClient.getTransactionReceipt({ hash: log.transactionHash as Address });
                             const gasUsed = receipt.gasUsed;
@@ -458,13 +457,26 @@ export const flareAdapter: ChainAdapter = {
         const timeoutMs = 10 * 60_000;
         const depositAddress = (ctx.cache.evm as any).depositAddress;
 
-        // Get starting block - start from current block to catch instant bridges
+        // Get FXRP token decimals for correct amount formatting
+        let fxrpDecimals = 18;
+        try {
+            const decimalsResult = await publicClient.readContract({
+                address: FXRP_TOKEN_ADDRESS,
+                abi: erc20Abi,
+                functionName: 'decimals',
+            }) as number;
+            fxrpDecimals = decimalsResult;
+            console.log(chalk.dim(`   FXRP uses ${fxrpDecimals} decimals`));
+        } catch (error) {
+            console.log(chalk.dim(`   Using default 18 decimals for FXRP`));
+        }
+
         // There's already a 10s wait between runs in index.ts, so no need to skip blocks
         const currentBlock = await publicClient.getBlockNumber();
         const startBlock = currentBlock;
 
         console.log(chalk.cyan(`\n🔍 Watching for INCOMING FXRP transfer to ${account.address}...`));
-        console.log(chalk.dim(`   Starting from block ${startBlock} to catch instant bridges`));
+        console.log(chalk.dim(`   Starting from block ${startBlock}`));
         if (depositAddress) {
             console.log(chalk.dim(`   Excluding transfers FROM deposit address: ${depositAddress}`));
         }
@@ -536,8 +548,14 @@ export const flareAdapter: ChainAdapter = {
 
                             // Log transfer for visibility
                             if (value) {
-                                const amountInFxrp = Number(formatEther(value));
+                                const amountInFxrp = Number(formatUnits(value, fxrpDecimals));
                                 console.log(chalk.dim(`   Transfer: ${amountInFxrp} FXRP (raw: ${value}) from ${from}`));
+                            }
+
+                            // Skip if this is the same transaction hash from the previous run
+                            if (ctx.previousTargetTxHash && log.transactionHash === ctx.previousTargetTxHash) {
+                                console.log(chalk.dim(`   → Skipping: previous run's transaction (hash: ${log.transactionHash?.substring(0, 10)}...)`));
+                                return false;
                             }
 
                             // Exclude transfers FROM the deposit address (our original outgoing transfer)
@@ -562,7 +580,7 @@ export const flareAdapter: ChainAdapter = {
                         if (log) {
                             const from = (log as any).args?.from as string;
                             const value = (log as any).args?.value as bigint | undefined;
-                            const transferAmount = value ? Number(formatEther(value)) : 0;
+                            const transferAmount = value ? Number(formatUnits(value, fxrpDecimals)) : 0;
 
                             console.log(chalk.green(`\n✅ Found INCOMING FXRP transfer!`));
                             console.log(chalk.dim(`   From: ${from}`));

@@ -235,6 +235,12 @@ export const xrplAdapter: ChainAdapter = {
                     if (!tx || tx.TransactionType !== "Payment") return;
                     if (tx.Destination !== wallet.address) return;
 
+                    // Skip if this is the same transaction hash from the previous run
+                    if (ctx.previousTargetTxHash && data.hash === ctx.previousTargetTxHash) {
+                        console.log(chalk.dim(`   Ignoring previous run's transaction (hash: ${data.hash?.substring(0, 8)}...)`));
+                        return;
+                    }
+
                     // Get transaction timestamp from ledger close time
                     // XRPL uses Ripple epoch (946684800 = Jan 1, 2000)
                     const rippleEpochOffset = 946684800;
