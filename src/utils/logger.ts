@@ -110,7 +110,6 @@ export function logStep(step: string): void {
 export function logConfig(cfg: RunConfig): void {
     const rows = [
         ['Tag', cfg.tag],
-        ['Mode', chalk.green('MAINNET')],
         ['Direction', chalk.cyan(cfg.direction)],
         ['Amount', formatAmount(cfg.xrpAmount, 'XRP')],
         ['Runs', chalk.white(cfg.runs.toString())],
@@ -514,7 +513,6 @@ async function confirmConfiguration(rl: readline.Interface, config: RunConfig): 
 
     console.log(chalk.bold('\n📋 Configuration Summary:'));
     console.log('┌─────────────────────────────────────────────┐');
-    console.log(`│ ${chalk.bold('Network Mode:')} ${chalk.yellow('MAINNET'.padEnd(30))}│`);
     console.log(`│ ${chalk.bold('Direction:')} ${chalk.cyan(direction.replace(/_/g, ' ').replace(/to/gi, '→').toUpperCase().padEnd(33))}│`);
     console.log(`│ ${chalk.bold('XRP Amount:')} ${chalk.yellow(xrpAmount.toString().padEnd(32))}│`);
     console.log(`│ ${chalk.bold('Test Runs:')} ${chalk.white(runs.toString().padEnd(33))}│`);

@@ -183,7 +183,6 @@ export function summaryToCsvRow(
 
 export const SUMMARY_CSV_HEADERS: string[] = [
   "timestampIso",
-  "mode",
   "tag",
   "bridgeName",
   "direction",
@@ -514,88 +513,76 @@ export function recomputeDirectionMetrics(bridgeName: string, direction: Network
 }
 
 /**
- * Recompute all_metrics.csv from all batch metrics across all modes and directions
+ * Recompute all_metrics.csv from all batch metrics across all directions
  */
-export function recomputeAllMetricsCsv(): { count: number; stats: { modes: number; directions: number; batches: number } } {
+export function recomputeAllMetricsCsv(): { count: number; stats: { directions: number; batches: number } } {
   const allCsvPath = path.join("data", "results", "all_metrics.csv");
   const allRows: Array<Record<string, string | number>> = [];
 
   const resultsFolder = path.join("data", "results");
   if (!fs.existsSync(resultsFolder)) {
-    return { count: 0, stats: { modes: 0, directions: 0, batches: 0 } };
+    return { count: 0, stats: { directions: 0, batches: 0 } };
   }
 
-  let totalModes = 0;
   let totalDirections = 0;
   let totalBatches = 0;
 
-  // Iterate through all modes (mainnet, testnet, etc.) - exclude deprecated folder
-  const modes = fs.readdirSync(resultsFolder, { withFileTypes: true })
+  // Get all direction folders (format: {bridgeName}_{direction}) - exclude deprecated
+  const directionFolders = fs.readdirSync(resultsFolder, { withFileTypes: true })
     .filter(dirent => dirent.isDirectory() && !dirent.name.includes('deprecated'))
     .map(dirent => dirent.name);
 
-  totalModes = modes.length;
+  totalDirections = directionFolders.length;
 
-  for (const mode of modes) {
-    const modeFolder = path.join(resultsFolder, mode);
+  for (const directionFolder of directionFolders) {
+    const directionPath = path.join(resultsFolder, directionFolder);
 
-    // Get all direction folders (excluding deprecated)
-    const directionFolders = fs.readdirSync(modeFolder, { withFileTypes: true })
-      .filter(dirent => dirent.isDirectory() && !dirent.name.includes('deprecated'))
+    // Get all batch folders
+    const batchFolders = fs.readdirSync(directionPath, { withFileTypes: true })
+      .filter(dirent => dirent.isDirectory())
       .map(dirent => dirent.name);
 
-    totalDirections += directionFolders.length;
+    totalBatches += batchFolders.length;
 
-    for (const directionFolder of directionFolders) {
-      const directionPath = path.join(modeFolder, directionFolder);
+    for (const batchFolder of batchFolders) {
+      const metricsFile = path.join(directionPath, batchFolder, `${batchFolder}_metrics.json`);
 
-      // Get all batch folders
-      const batchFolders = fs.readdirSync(directionPath, { withFileTypes: true })
-        .filter(dirent => dirent.isDirectory())
-        .map(dirent => dirent.name);
+      if (fs.existsSync(metricsFile)) {
+        try {
+          const content = fs.readFileSync(metricsFile, 'utf-8');
+          const report: MetricsReport = JSON.parse(content);
 
-      totalBatches += batchFolders.length;
+          // Extract addresses from cfgEcho
+          const xrplAddress = report.cfgEcho?.xrplAddress || '';
+          const evmAddress = report.cfgEcho?.evmAddress || '';
 
-      for (const batchFolder of batchFolders) {
-        const metricsFile = path.join(directionPath, batchFolder, `${batchFolder}_metrics.json`);
-
-        if (fs.existsSync(metricsFile)) {
-          try {
-            const content = fs.readFileSync(metricsFile, 'utf-8');
-            const report: MetricsReport = JSON.parse(content);
-
-            // Extract addresses from cfgEcho
-            const xrplAddress = report.cfgEcho?.xrplAddress || '';
-            const evmAddress = report.cfgEcho?.evmAddress || '';
-
-            // Create a temporary RunConfig from cfgEcho for summaryToCsvRow
-            const cfg: RunConfig = {
-              tag: report.summary.tag,
-              networks: {
-                xrpl: {
-                  wsUrl: report.cfgEcho?.xrplUrl || '',
-                  gateway: report.cfgEcho?.xrplUrl || '',
-                  walletSeed: '',
-                  gas_fee: '',
-                },
-                evm: {
-                  rpcUrl: report.cfgEcho?.evmUrl || '',
-                  gateway: report.cfgEcho?.evmUrl || '',
-                  walletPrivateKey: '',
-                  relayer: '',
-                }
+          // Create a temporary RunConfig from cfgEcho for summaryToCsvRow
+          const cfg: RunConfig = {
+            tag: report.summary.tag,
+            networks: {
+              xrpl: {
+                wsUrl: report.cfgEcho?.xrplUrl || '',
+                gateway: report.cfgEcho?.xrplUrl || '',
+                walletSeed: '',
+                gas_fee: '',
               },
-              direction: report.summary.direction as NetworkDirection,
-              xrpAmount: report.summary.transferAmount,
-              runs: report.summary.runsPlanned,
-              bridgeName: report.summary.bridgeName,
-            };
+              evm: {
+                rpcUrl: report.cfgEcho?.evmUrl || '',
+                gateway: report.cfgEcho?.evmUrl || '',
+                walletPrivateKey: '',
+                relayer: '',
+              }
+            },
+            direction: report.summary.direction as NetworkDirection,
+            xrpAmount: report.summary.transferAmount,
+            runs: report.summary.runsPlanned,
+            bridgeName: report.summary.bridgeName,
+          };
 
-            const row = summaryToCsvRow(report.summary, cfg, xrplAddress, evmAddress);
-            allRows.push(row);
-          } catch (err) {
-            console.warn(`Failed to read metrics from ${metricsFile}:`, err);
-          }
+          const row = summaryToCsvRow(report.summary, cfg, xrplAddress, evmAddress);
+          allRows.push(row);
+        } catch (err) {
+          console.warn(`Failed to read metrics from ${metricsFile}:`, err);
         }
       }
     }
@@ -614,7 +601,6 @@ export function recomputeAllMetricsCsv(): { count: number; stats: { modes: numbe
   return {
     count: allRows.length,
     stats: {
-      modes: totalModes,
       directions: totalDirections,
       batches: totalBatches
     }
