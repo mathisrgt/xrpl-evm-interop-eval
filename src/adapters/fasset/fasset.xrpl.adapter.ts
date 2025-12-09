@@ -140,7 +140,6 @@ export const xrplAdapter: ChainAdapter = {
                 functionName: 'decimals',
             }) as number;
             fxrpDecimals = decimalsResult;
-            console.log(chalk.dim(`   FXRP uses ${fxrpDecimals} decimals`));
         } catch (error) {
             console.log(chalk.dim(`   Using default 18 decimals for FXRP`));
         }

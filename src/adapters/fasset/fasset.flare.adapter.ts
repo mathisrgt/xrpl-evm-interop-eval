@@ -170,7 +170,6 @@ export const flareAdapter: ChainAdapter = {
                 functionName: 'decimals',
             }) as number;
             fxrpDecimals = decimalsResult;
-            console.log(chalk.dim(`   FXRP uses ${fxrpDecimals} decimals`));
         } catch (error) {
             console.log(chalk.dim(`   Using default 18 decimals for FXRP`));
         }
@@ -360,11 +359,6 @@ export const flareAdapter: ChainAdapter = {
                             const to = (log as any).args?.to as string;
                             const value = (log as any).args?.value as bigint | undefined;
 
-                            // Debug: Log raw value
-                            console.log(chalk.dim(`\n   [DEBUG] Raw transfer value: ${value?.toString()}`));
-                            console.log(chalk.dim(`   [DEBUG] Token address: ${log.address}`));
-                            console.log(chalk.dim(`   [DEBUG] Expected token: ${FXRP_TOKEN_ADDRESS}`));
-
                             const transferAmount = value ? Number(formatUnits(value, fxrpDecimals)) : 0;
 
                             console.log(chalk.green(`\n✅ Found OUTGOING FXRP transfer!`));
@@ -466,7 +460,6 @@ export const flareAdapter: ChainAdapter = {
                 functionName: 'decimals',
             }) as number;
             fxrpDecimals = decimalsResult;
-            console.log(chalk.dim(`   FXRP uses ${fxrpDecimals} decimals`));
         } catch (error) {
             console.log(chalk.dim(`   Using default 18 decimals for FXRP`));
         }

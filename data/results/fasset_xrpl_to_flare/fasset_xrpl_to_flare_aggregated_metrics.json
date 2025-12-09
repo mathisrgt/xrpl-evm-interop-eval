@@ -1,34 +1,34 @@
 {
   "summary": {
-    "timestampIso": "2025-12-08T14:19:14.364Z",
+    "timestampIso": "2025-12-09T19:49:05.763Z",
     "tag": "fasset_xrpl_to_flare_aggregated",
     "bridgeName": "fasset",
     "direction": "xrpl_to_flare",
     "transferAmount": 10,
     "transferAmountUsd": 0,
-    "runsPlanned": 7,
-    "totalRuns": 7,
-    "successCount": 6,
+    "runsPlanned": 8,
+    "totalRuns": 8,
+    "successCount": 7,
     "failureCount": 1,
-    "successRate": 0.8571428571428571,
+    "successRate": 0.875,
     "latency": {
-      "n": 6,
+      "n": 7,
       "minMs": 133503,
-      "p50Ms": 151702.5,
-      "p90Ms": 181606.5,
-      "p95Ms": 186611.25,
+      "p50Ms": 151468,
+      "p90Ms": 179604.6,
+      "p95Ms": 185610.3,
       "maxMs": 191616,
-      "meanMs": 157861.5,
-      "stdDevMs": 18771.765489248297
+      "meanMs": 156537.42857142858,
+      "stdDevMs": 17679.318077162065
     },
     "costs": {
-      "n": 0,
-      "meanBridgeUsd": null,
-      "meanSourceFeeUsd": 0.0010567766666666667,
-      "meanTargetFeeUsd": 0.12016371999999999
+      "n": 1,
+      "meanBridgeUsd": 0.021399999999999864,
+      "meanSourceFeeUsd": 0.0010724642857142858,
+      "meanTargetFeeUsd": 0.10919794857142857
     },
-    "batchDurationMs": 1582024
+    "batchDurationMs": 1731004
   },
-  "batchCount": 7,
-  "lastUpdated": "2025-12-08T14:19:14.364Z"
+  "batchCount": 8,
+  "lastUpdated": "2025-12-09T19:49:05.764Z"
 }

@@ -213,7 +213,7 @@ export async function createRunRecord(
     }
 
     // For cross-currency bridges, calculate USD fees directly from converted amounts
-    if (isCrossCurrency && !isFasset) {
+    if (isCrossCurrency || isFasset) {
         // Convert source and target amounts to USD
         const sourceAmountUsd = srcOutput.currency
             ? await convertWithRetry(srcOutput.xrpAmount, srcOutput.currency, srcOutput.submittedAt, 'source amount')

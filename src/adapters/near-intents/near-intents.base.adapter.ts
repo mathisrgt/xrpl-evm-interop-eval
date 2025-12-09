@@ -230,8 +230,10 @@ export const baseAdapter: ChainAdapter = {
         const txFee = Number(formatEther(gasFeeWei));
 
         // For near-intents Base→XRPL, we send USDC (native stablecoin on source chain)
-        // Record the actual USDC amount sent
-        return { xrpAmount: usdcAmountFloat, txHash, submittedAt, txFee, currency: 'USDC' };
+        // Record the intended USDC amount (without slippage buffer) for accurate bridge fee calculation
+        // The 10% slippage buffer is for protection but shouldn't count as a "bridge fee"
+        const intendedUsdcAmount = ctx.cfg.xrpAmount * xrpPriceUsd;
+        return { xrpAmount: intendedUsdcAmount, txHash, submittedAt, txFee, currency: 'USDC' };
     },
 
     async observe(ctx: RunContext): Promise<TargetOutput> {
