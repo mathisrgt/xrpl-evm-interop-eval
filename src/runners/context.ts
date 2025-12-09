@@ -214,16 +214,17 @@ export async function createRunRecord(
 
     // For cross-currency bridges, calculate USD fees directly from converted amounts
     if (isCrossCurrency || isFasset) {
-        // Convert source and target amounts to USD
+        // Convert what was actually sent to USD at send time
         const sourceAmountUsd = srcOutput.currency
             ? await convertWithRetry(srcOutput.xrpAmount, srcOutput.currency, srcOutput.submittedAt, 'source amount')
             : null;
 
+        // Convert what was actually received to USD at receive time
         const targetAmountUsd = trgOutput.currency
             ? await convertWithRetry(trgOutput.xrpAmount, trgOutput.currency, trgOutput.finalizedAt, 'target amount')
             : null;
 
-        // Calculate USD-based fees
+        // Bridge cost = what you sent - what you received (in USD)
         if (sourceAmountUsd !== null && targetAmountUsd !== null) {
             bridgeFeeUsd = sourceAmountUsd - targetAmountUsd;
             totalBridgeCostUsd = sourceAmountUsd + (sourceFeeUsd || 0) - targetAmountUsd;

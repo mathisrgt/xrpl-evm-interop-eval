@@ -157,9 +157,9 @@ export const xrplAdapter: ChainAdapter = {
         const { client, wallet, depositAddress } = ctx.cache.xrpl!;
         if (!client || !wallet) throw new Error("XRPL not prepared");
 
-        // Record when observation starts - only accept transactions AFTER this time
-        // Start monitoring immediately (there's already a 10s wait between runs in index.ts)
-        const observeStartTime = Date.now();
+        // Use submit time as cutoff - accept transactions from when the source transaction was submitted
+        // This prevents missing fast bridges where the XRPL tx arrives before observe() is called
+        const observeStartTime = ctx.ts.t1_submit || Date.now();
 
         console.log(`🔍 Watching for XRP payments to ${wallet.address} on XRPL`);
         console.log(chalk.dim(`   Only accepting transactions after ${new Date(observeStartTime).toISOString()}`));
