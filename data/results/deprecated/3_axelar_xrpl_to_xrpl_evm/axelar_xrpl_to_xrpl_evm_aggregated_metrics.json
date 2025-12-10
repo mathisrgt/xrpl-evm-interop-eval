@@ -1,0 +1,34 @@
+{
+  "summary": {
+    "timestampIso": "2025-12-10T10:21:56.698Z",
+    "tag": "axelar_xrpl_to_xrpl_evm_aggregated",
+    "bridgeName": "axelar",
+    "direction": "xrpl_to_xrpl_evm",
+    "transferAmount": 4,
+    "transferAmountUsd": 0,
+    "runsPlanned": 3,
+    "totalRuns": 2,
+    "successCount": 2,
+    "failureCount": 0,
+    "successRate": 1,
+    "latency": {
+      "n": 2,
+      "minMs": 78940,
+      "p50Ms": 86248,
+      "p90Ms": 92094.40000000001,
+      "p95Ms": 92825.2,
+      "maxMs": 93556,
+      "meanMs": 86248,
+      "stdDevMs": 7308
+    },
+    "costs": {
+      "n": 2,
+      "meanBridgeUsd": 0.4441668,
+      "meanSourceFeeUsd": 0.00002508,
+      "meanTargetFeeUsd": 0.1281586
+    },
+    "batchDurationMs": 173133
+  },
+  "batchCount": 1,
+  "lastUpdated": "2025-12-10T10:21:56.698Z"
+}

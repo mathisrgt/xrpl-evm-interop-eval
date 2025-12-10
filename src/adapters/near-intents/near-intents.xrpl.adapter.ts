@@ -227,6 +227,12 @@ export const xrplAdapter: ChainAdapter = {
                     const txFeeXrp = Number(dropsToXrp(tx.Fee));
                     const finalizedAt = Date.now();
 
+                    // Skip small gas return transactions (< 0.001 XRP)
+                    if (deliveredXrp < 0.001) {
+                        console.log(chalk.dim(`   Ignoring small gas return transaction: ${deliveredXrp.toFixed(6)} XRP (hash: ${data.hash?.substring(0, 8)}...)`));
+                        return;
+                    }
+
                     console.log(chalk.green(`✅ Found incoming XRP payment!`));
                     console.log(chalk.dim(`   From: ${tx.Account}`));
                     console.log(chalk.dim(`   Amount: ${deliveredXrp} XRP`));
