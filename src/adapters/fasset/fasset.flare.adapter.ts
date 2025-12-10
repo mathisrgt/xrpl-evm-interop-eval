@@ -231,7 +231,7 @@ export const flareAdapter: ChainAdapter = {
                             const value = (log as any).args?.value as bigint | undefined;
 
                             // Format with correct decimals
-                            const approvalAmount = value ? (Number(value) / Math.pow(10, fxrpDecimals)).toFixed(6) : 'N/A';
+                            const approvalAmount = value ? (Number(value) / Math.pow(10, fxrpDecimals)).toFixed(3) : 'N/A';
 
                             console.log(chalk.green(`\n✅ Found FXRP approval transaction!`));
                             console.log(chalk.dim(`   Spender: ${spender}`));
@@ -244,7 +244,7 @@ export const flareAdapter: ChainAdapter = {
                             const gasFeeWei = gasUsed * effectiveGasPrice;
                             const fee = Number(formatEther(gasFeeWei));
 
-                            console.log(chalk.dim(`   Approval fee: ${fee.toFixed(6)} FLR`));
+                            console.log(chalk.dim(`   Approval fee: ${fee.toFixed(3)} FLR`));
 
                             resolve({ fee, feeWei: gasFeeWei, txHash: log.transactionHash as string });
                         }

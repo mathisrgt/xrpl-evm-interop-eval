@@ -9,7 +9,7 @@ export interface SavePaths {
   metricsJson: string;
   metricsCsv: string;
   directionSummaryCsv: string;
-  allCsv: string;
+  allBatchesCsv: string;
 }
 
 export function makePaths(batchId: string, direction: NetworkDirection, bridgeName: string): SavePaths {
@@ -24,7 +24,7 @@ export function makePaths(batchId: string, direction: NetworkDirection, bridgeNa
     metricsJson: path.join(dir, `${batchId}_metrics.json`),
     metricsCsv: path.join(dir, `${batchId}_metrics.csv`),
     directionSummaryCsv: path.join(directionFolder, `${bridgeName}_${direction}_summary.csv`),
-    allCsv: path.join("data", "results", "all_metrics.csv"),
+    allBatchesCsv: path.join("data", "results", "all_batches_metrics.csv"),
   };
 }
 
@@ -65,20 +65,33 @@ function ensureDir(filePath: string) {
 
 /**
  * JSON replacer function that prevents scientific notation
- * Converts numbers to fixed decimal notation (e.g., 1e-7 -> 0.0000001)
+ * Rounds to max 3 decimal places
+ * Values smaller than 0.0005 (which round to 0.000) become 0
  */
-function jsonReplacer(_key: string, value: any): any {
+function jsonReplacer(key: string, value: any): any {
   if (typeof value === 'number') {
-    // Check if the number would be serialized in scientific notation
+    // For keys that represent amounts/balances, apply 3 decimal rounding
+    const isAmountKey = key.toLowerCase().includes('amount') ||
+                       key.toLowerCase().includes('balance') ||
+                       key.toLowerCase().includes('xrp') ||
+                       key.toLowerCase().includes('fee');
+
+    if (isAmountKey) {
+      // Round to 3 decimals
+      const rounded = Math.round(value * 1000) / 1000;
+      return rounded;
+    }
+
+    // For other numbers, prevent scientific notation
     const str = value.toString();
     if (str.includes('e') || str.includes('E')) {
-      // Use toFixed with enough decimal places to represent the number
-      // Find the exponent to determine decimal places needed
+      // Use toFixed with appropriate decimal places
       const match = str.match(/e([+-]?\d+)/i);
       if (match) {
         const exponent = parseInt(match[1], 10);
-        const decimalPlaces = exponent < 0 ? Math.abs(exponent) + 10 : 10;
-        return parseFloat(value.toFixed(decimalPlaces));
+        const decimalPlaces = exponent < 0 ? Math.min(Math.abs(exponent) + 2, 10) : 6;
+        const fixed = value.toFixed(decimalPlaces);
+        return parseFloat(fixed);
       }
     }
   }
@@ -349,7 +362,7 @@ export function computeDirectionSummary(direction: NetworkDirection, bridgeName:
  * - Metrics report → JSON (sanitized)
  * - Metrics summary → CSV (single row with addresses)
  * - Append to direction-specific summary CSV
- * - Append to rolling all_metrics.csv
+ * - Append to rolling all_batches_metrics.csv
  */
 export function saveBatchArtifacts(
   batchId: string,
@@ -379,10 +392,10 @@ export function saveBatchArtifacts(
 
   const row = summaryToCsvRow(report.summary, cfg, xrplAddress, evmAddress);
   writeCsv(paths.metricsCsv, [row]);
-  
+
   appendCsvRow(paths.directionSummaryCsv, SUMMARY_CSV_HEADERS, row);
-  
-  appendCsvRow(paths.allCsv, SUMMARY_CSV_HEADERS, row);
+
+  appendCsvRow(paths.allBatchesCsv, SUMMARY_CSV_HEADERS, row);
 
   const directionSummary = computeDirectionSummary(cfg.direction, cfg.bridgeName);
   if (directionSummary) {
@@ -513,10 +526,10 @@ export function recomputeDirectionMetrics(bridgeName: string, direction: Network
 }
 
 /**
- * Recompute all_metrics.csv from all batch metrics across all directions
+ * Recompute all_batches_metrics.csv from all batch metrics across all directions
  */
-export function recomputeAllMetricsCsv(): { count: number; stats: { directions: number; batches: number } } {
-  const allCsvPath = path.join("data", "results", "all_metrics.csv");
+export function recomputeAllBatchesCsv(): { count: number; stats: { directions: number; batches: number } } {
+  const allCsvPath = path.join("data", "results", "all_batches_metrics.csv");
   const allRows: Array<Record<string, string | number>> = [];
 
   const resultsFolder = path.join("data", "results");
@@ -603,6 +616,148 @@ export function recomputeAllMetricsCsv(): { count: number; stats: { directions: 
     stats: {
       directions: totalDirections,
       batches: totalBatches
+    }
+  };
+}
+
+/**
+ * Transaction-level CSV headers for all_tx_metrics.csv
+ */
+export const TX_CSV_HEADERS: string[] = [
+  "runId",
+  "timestampIso",
+  "bridgeName",
+  "direction",
+  "success",
+  "sourceTxHash",
+  "targetTxHash",
+  "bridgeMessageId",
+  "depositAddress",
+  "latencyMs",
+  "sourceFee",
+  "targetFee",
+  "bridgeFee",
+  "totalCost",
+  "sourceFeeUsd",
+  "targetFeeUsd",
+  "bridgeFeeUsd",
+  "totalCostUsd",
+  "abort_reason",
+  "error_type",
+];
+
+/**
+ * Convert a RunRecord to a transaction-level CSV row
+ */
+function txRecordToCsvRow(record: RunRecord): Record<string, string | number> {
+  // Calculate latency if available
+  let latencyMs: number | string = "";
+  if (record.timestamps.t1_submit && record.timestamps.t3_finalized) {
+    latencyMs = record.timestamps.t3_finalized - record.timestamps.t1_submit;
+  }
+
+  // Generate timestamp ISO from the earliest available timestamp
+  const timestamp = record.timestamps.t1_submit || record.timestamps.t0_prepare || Date.now();
+  const timestampIso = new Date(timestamp).toISOString();
+
+  return {
+    runId: record.runId,
+    timestampIso,
+    bridgeName: record.cfg.bridgeName,
+    direction: record.cfg.direction,
+    success: record.success ? 1 : 0,
+    sourceTxHash: record.txs.sourceTxHash || "",
+    targetTxHash: record.txs.targetTxHash || "",
+    bridgeMessageId: record.txs.bridgeMessageId || "",
+    depositAddress: record.txs.depositAddress || "",
+    latencyMs,
+    sourceFee: record.costs.sourceFee ?? "",
+    targetFee: record.costs.targetFee ?? "",
+    bridgeFee: record.costs.bridgeFee ?? "",
+    totalCost: record.costs.totalCost ?? "",
+    sourceFeeUsd: record.costs.sourceFeeUsd ?? "",
+    targetFeeUsd: record.costs.targetFeeUsd ?? "",
+    bridgeFeeUsd: record.costs.bridgeFeeUsd ?? "",
+    totalCostUsd: record.costs.totalCostUsd ?? "",
+    abort_reason: record.abort_reason || "",
+    error_type: record.error_type || "",
+  };
+}
+
+/**
+ * Recompute all_tx_metrics.csv from all transaction records across all batches
+ */
+export function recomputeAllTxCsv(): { count: number; stats: { directions: number; batches: number; transactions: number } } {
+  const allTxCsvPath = path.join("data", "results", "all_tx_metrics.csv");
+  const allTxRows: Array<Record<string, string | number>> = [];
+
+  const resultsFolder = path.join("data", "results");
+  if (!fs.existsSync(resultsFolder)) {
+    return { count: 0, stats: { directions: 0, batches: 0, transactions: 0 } };
+  }
+
+  let totalDirections = 0;
+  let totalBatches = 0;
+  let totalTransactions = 0;
+
+  // Get all direction folders (format: {bridgeName}_{direction}) - exclude deprecated
+  const directionFolders = fs.readdirSync(resultsFolder, { withFileTypes: true })
+    .filter(dirent => dirent.isDirectory() && !dirent.name.includes('deprecated'))
+    .map(dirent => dirent.name);
+
+  totalDirections = directionFolders.length;
+
+  for (const directionFolder of directionFolders) {
+    const directionPath = path.join(resultsFolder, directionFolder);
+
+    // Get all batch folders
+    const batchFolders = fs.readdirSync(directionPath, { withFileTypes: true })
+      .filter(dirent => dirent.isDirectory())
+      .map(dirent => dirent.name);
+
+    totalBatches += batchFolders.length;
+
+    for (const batchFolder of batchFolders) {
+      const jsonlFile = path.join(directionPath, batchFolder, `${batchFolder}.jsonl`);
+
+      if (fs.existsSync(jsonlFile)) {
+        try {
+          const content = fs.readFileSync(jsonlFile, 'utf-8');
+          const lines = content.split('\n').filter(l => l.trim());
+
+          for (const line of lines) {
+            try {
+              const record: RunRecord = JSON.parse(line);
+              const row = txRecordToCsvRow(record);
+              allTxRows.push(row);
+              totalTransactions++;
+            } catch (err) {
+              console.warn(`Failed to parse transaction record in ${jsonlFile}:`, err);
+            }
+          }
+        } catch (err) {
+          console.warn(`Failed to read JSONL file ${jsonlFile}:`, err);
+        }
+      }
+    }
+  }
+
+  // Sort rows by timestamp (newest first)
+  allTxRows.sort((a, b) => {
+    const timeA = new Date(a.timestampIso as string).getTime();
+    const timeB = new Date(b.timestampIso as string).getTime();
+    return timeB - timeA;
+  });
+
+  // Write the CSV
+  writeCsv(allTxCsvPath, allTxRows);
+
+  return {
+    count: allTxRows.length,
+    stats: {
+      directions: totalDirections,
+      batches: totalBatches,
+      transactions: totalTransactions
     }
   };
 }

@@ -210,8 +210,8 @@ export const xrplAdapter: ChainAdapter = {
                                                 const collateralValue = Number(formatEther(tx.value));
 
                                                 console.log(chalk.green(`\n✅ Found reserveCollateral transaction on Flare!`));
-                                                console.log(chalk.dim(`   Collateral: ${collateralValue.toFixed(6)} FLR`));
-                                                console.log(chalk.dim(`   Gas fee: ${fee.toFixed(6)} FLR`));
+                                                console.log(chalk.dim(`   Collateral: ${collateralValue.toFixed(3)} FLR`));
+                                                console.log(chalk.dim(`   Gas fee: ${fee.toFixed(3)} FLR`));
                                                 console.log(chalk.dim(`   Tx: ${txHash}`));
                                                 console.log(chalk.dim(`   Block: ${blockNum}`));
 
@@ -302,15 +302,15 @@ export const xrplAdapter: ChainAdapter = {
 
                     console.log(chalk.green(`\n✅ Found OUTGOING XRP payment!`));
                     console.log(chalk.dim(`   To: ${tx.Destination}`));
-                    console.log(chalk.dim(`   Amount: ${deliveredXrp} XRP`));
-                    console.log(chalk.dim(`   Fee: ${txFeeXrp} XRP`));
+                    console.log(chalk.dim(`   Amount: ${deliveredXrp.toFixed(3)} XRP`));
+                    console.log(chalk.dim(`   Fee: ${txFeeXrp.toFixed(3)} XRP`));
                     console.log(chalk.dim(`   Tx: ${data.hash}`));
                     console.log(chalk.dim(`   Explorer: https://livenet.xrpl.org/transactions/${data.hash}`));
 
                     // Validate amount is sufficient
                     if (deliveredXrp < ctx.cfg.xrpAmount) {
-                        console.log(chalk.yellow(`⚠️  Payment amount (${deliveredXrp} XRP) is less than expected (${ctx.cfg.xrpAmount} XRP)`));
-                        console.log(chalk.yellow(`   Waiting for a payment of at least ${ctx.cfg.xrpAmount} XRP...`));
+                        console.log(chalk.yellow(`⚠️  Payment amount (${deliveredXrp.toFixed(3)} XRP) is less than expected (${ctx.cfg.xrpAmount.toFixed(3)} XRP)`));
+                        console.log(chalk.yellow(`   Waiting for a payment of at least ${ctx.cfg.xrpAmount.toFixed(3)} XRP...`));
                         return;
                     }
 
@@ -416,14 +416,14 @@ export const xrplAdapter: ChainAdapter = {
 
                     // Skip small gas return transactions (< 0.001 XRP)
                     if (deliveredXrp < 0.001) {
-                        console.log(chalk.dim(`   Ignoring small gas return transaction: ${deliveredXrp.toFixed(6)} XRP (hash: ${data.hash?.substring(0, 8)}...)`));
+                        console.log(chalk.dim(`   Ignoring small gas return transaction: ${deliveredXrp.toFixed(3)} XRP (hash: ${data.hash?.substring(0, 8)}...)`));
                         return;
                     }
 
                     console.log(chalk.green(`\n✅ Found INCOMING XRP payment!`));
                     console.log(chalk.dim(`   From: ${tx.Account}`));
-                    console.log(chalk.dim(`   Amount: ${deliveredXrp} XRP`));
-                    console.log(chalk.dim(`   Fee: ${txFeeXrp} XRP`));
+                    console.log(chalk.dim(`   Amount: ${deliveredXrp.toFixed(3)} XRP`));
+                    console.log(chalk.dim(`   Fee: ${txFeeXrp.toFixed(3)} XRP`));
                     console.log(chalk.dim(`   Tx: ${data.hash}`));
                     console.log(chalk.dim(`   Explorer: https://livenet.xrpl.org/transactions/${data.hash}`));
 

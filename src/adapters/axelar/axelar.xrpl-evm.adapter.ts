@@ -297,7 +297,7 @@ export const evmAdapter: ChainAdapter = {
                         console.log(chalk.green(`✅ Found incoming XRP token transfer!`));
                         console.log(chalk.dim(`   Token: ${log.address}`));
                         console.log(chalk.dim(`   From: ${from}`));
-                        console.log(chalk.dim(`   Amount: ${xrpAmount} XRP`));
+                        console.log(chalk.dim(`   Amount: ${xrpAmount.toFixed(3)} XRP`));
                         console.log(chalk.dim(`   Tx: ${log.transactionHash}`));
 
                         const receipt = await publicClient.getTransactionReceipt({ hash: log.transactionHash as Address });

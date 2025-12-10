@@ -1,0 +1,34 @@
+{
+  "summary": {
+    "timestampIso": "2025-12-10T18:54:21.622Z",
+    "tag": "near-intents_base_to_xrpl_aggregated",
+    "bridgeName": "near-intents",
+    "direction": "base_to_xrpl",
+    "transferAmount": 4,
+    "transferAmountUsd": 0,
+    "runsPlanned": 17,
+    "totalRuns": 17,
+    "successCount": 17,
+    "failureCount": 0,
+    "successRate": 1,
+    "latency": {
+      "n": 17,
+      "minMs": 34435,
+      "p50Ms": 39553,
+      "p90Ms": 50041.600000000006,
+      "p95Ms": 53492.59999999999,
+      "maxMs": 66519,
+      "meanMs": 41251.17647058824,
+      "stdDevMs": 7974.801765821659
+    },
+    "costs": {
+      "n": 16,
+      "meanBridgeUsd": 0.00375,
+      "meanSourceFeeUsd": null,
+      "meanTargetFeeUsd": null
+    },
+    "batchDurationMs": 708297
+  },
+  "batchCount": 4,
+  "lastUpdated": "2025-12-10T18:54:21.622Z"
+}

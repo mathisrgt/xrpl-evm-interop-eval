@@ -1,0 +1,49 @@
+{
+  "summary": {
+    "timestampIso": "2025-12-10T15:55:05.482Z",
+    "tag": "mainnet_xrpl_to_base_1765382021073",
+    "bridgeName": "near-intents",
+    "direction": "xrpl_to_base",
+    "transferAmount": 4,
+    "transferAmountUsd": 0,
+    "runsPlanned": 3,
+    "totalRuns": 3,
+    "successCount": 2,
+    "failureCount": 1,
+    "successRate": 0.6666666666666666,
+    "latency": {
+      "n": 2,
+      "minMs": 31857,
+      "p50Ms": 34223,
+      "p90Ms": 36115.799999999996,
+      "p95Ms": 36352.399999999994,
+      "maxMs": 36589,
+      "meanMs": 34223,
+      "stdDevMs": 2366
+    },
+    "costs": {
+      "n": 2,
+      "meanBridgeUsd": 0.0015340000000003684,
+      "meanSourceFeeUsd": 0,
+      "meanTargetFeeUsd": 0
+    },
+    "batchDurationMs": 84382
+  },
+  "latenciesMs": [
+    36589,
+    31857
+  ],
+  "failureReasons": {
+    "Failed to get Near Intents quote after 3 attempts: Bad Request - Invalid input data": 1
+  },
+  "cfgEcho": {
+    "tag": "mainnet_xrpl_to_base_1765382021073",
+    "direction": "xrpl_to_base",
+    "xrpAmount": 4,
+    "runs": 3,
+    "xrplUrl": "wss://xrplcluster.com/",
+    "evmUrl": "https://rpc.xrplevm.org",
+    "xrplAddress": "rneoLeMEDF3aRzd2ejsEo3MabLsjCnho55",
+    "evmAddress": "0xeF0e7DD8823791927C9685ef946350971A21114E"
+  }
+}

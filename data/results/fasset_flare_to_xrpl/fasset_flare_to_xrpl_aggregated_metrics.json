@@ -1,0 +1,34 @@
+{
+  "summary": {
+    "timestampIso": "2025-12-10T18:42:27.128Z",
+    "tag": "fasset_flare_to_xrpl_aggregated",
+    "bridgeName": "fasset",
+    "direction": "flare_to_xrpl",
+    "transferAmount": 10,
+    "transferAmountUsd": 0,
+    "runsPlanned": 6,
+    "totalRuns": 6,
+    "successCount": 6,
+    "failureCount": 0,
+    "successRate": 1,
+    "latency": {
+      "n": 6,
+      "minMs": 32042,
+      "p50Ms": 73770,
+      "p90Ms": 183715.5,
+      "p95Ms": 234139.25,
+      "maxMs": 284563,
+      "meanMs": 100872,
+      "stdDevMs": 83778.29361475441
+    },
+    "costs": {
+      "n": 6,
+      "meanBridgeUsd": 0.04819999999999972,
+      "meanSourceFeeUsd": 0.195,
+      "meanTargetFeeUsd": 0
+    },
+    "batchDurationMs": 608082
+  },
+  "batchCount": 6,
+  "lastUpdated": "2025-12-10T18:42:27.129Z"
+}

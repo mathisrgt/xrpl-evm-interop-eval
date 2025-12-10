@@ -258,7 +258,7 @@ export const xrplAdapter: ChainAdapter = {
 
                     // Skip small gas return transactions (< 0.001 XRP)
                     if (deliveredXrp < 0.001) {
-                        console.log(chalk.dim(`   Ignoring small gas return transaction: ${deliveredXrp.toFixed(6)} XRP (hash: ${data.hash?.substring(0, 8)}...)`));
+                        console.log(chalk.dim(`   Ignoring small gas return transaction: ${deliveredXrp.toFixed(3)} XRP (hash: ${data.hash?.substring(0, 8)}...)`));
                         return;
                     }
 

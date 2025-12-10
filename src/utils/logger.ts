@@ -4,7 +4,7 @@ import { formatElapsedMs } from "./time";
 import readline from "readline";
 import { loadConfig } from "../runners/config";
 import { MetricsSummary } from "./metrics";
-import { getDirectionFolders, recomputeDirectionMetrics, recomputeAllMetricsCsv } from "./fsio";
+import { getDirectionFolders, recomputeDirectionMetrics, recomputeAllBatchesCsv, recomputeAllTxCsv } from "./fsio";
 import { getXrplWallet, getEvmAccount } from "./environment";
 import { Client } from "xrpl";
 import { createPublicClient, formatEther, http } from "viem";
@@ -75,11 +75,24 @@ function formatAddress(address: string, chain: 'xrpl' | 'evm', showPrefix: boole
 
 function formatAmount(amount: number | string, unit: string = 'XRP'): string {
     const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
-    const formatted = numAmount.toLocaleString(undefined, {
+
+    // Round to 3 decimal places
+    const rounded = Math.round(numAmount * 1000) / 1000;
+
+    const formatted = rounded.toLocaleString(undefined, {
         minimumFractionDigits: 2,
-        maximumFractionDigits: 6
+        maximumFractionDigits: 3
     });
     return `${chalk.yellow(formatted)} ${chalk.dim(unit)}`;
+}
+
+/**
+ * Format fee amounts with max 3 decimal places
+ * Values < 0.0005 round to 0.000
+ */
+function formatFee(fee: number): string {
+    const rounded = Math.round(fee * 1000) / 1000;
+    return rounded.toFixed(3);
 }
 
 function getSourceChain(direction: NetworkDirection): 'xrpl' | 'evm' {
@@ -186,7 +199,7 @@ export function logSubmit(ctx: RunContext, srcOutput: SourceOutput) {
         const approvalChain: 'xrpl' | 'evm' | 'near-intents' | 'axelar' = isFasset ? 'evm' : sourceChain;
         console.log(`Hash: ${formatExplorerLink(srcOutput.approvalTxHash, 'tx', approvalChain, ctx.cfg.direction)}`);
         if (srcOutput.approvalFee) {
-            console.log(`Fee: ${chalk.yellow(srcOutput.approvalFee.toFixed(6))} FLR`);
+            console.log(`Fee: ${chalk.yellow(formatFee(srcOutput.approvalFee))} FLR`);
         }
         console.log('');
     }
@@ -230,7 +243,7 @@ export function logObserve(ctx: RunContext, output: TargetOutput): void {
         const approvalChain: 'xrpl' | 'evm' | 'near-intents' | 'axelar' = isFasset ? 'evm' : targetChain;
         console.log(`Hash: ${formatExplorerLink(output.approvalTxHash, 'tx', approvalChain, ctx.cfg.direction)}`);
         if (output.approvalFee) {
-            console.log(`Fee: ${chalk.yellow(output.approvalFee.toFixed(6))} FLR`);
+            console.log(`Fee: ${chalk.yellow(formatFee(output.approvalFee))} FLR`);
         }
         console.log('');
     }
@@ -313,19 +326,19 @@ export function logRecord(record: RunRecord): void {
     // Cost information
     const costs = record.costs;
     if (costs.sourceFee) {
-        console.log(`${chalk.bold('Source fee')}: ${chalk.yellow(costs.sourceFee.toFixed(7))} XRP`);
+        console.log(`${chalk.bold('Source fee')}: ${chalk.yellow(formatFee(costs.sourceFee))} XRP`);
     }
     if (costs.targetFee) {
-        console.log(`${chalk.bold('Target fee')}: ${chalk.yellow(costs.targetFee.toFixed(7))} XRP`);
+        console.log(`${chalk.bold('Target fee')}: ${chalk.yellow(formatFee(costs.targetFee))} XRP`);
     }
     if (costs.bridgeFee) {
-        console.log(`${chalk.bold('Bridge fee')}: ${chalk.yellow(costs.bridgeFee.toFixed(7))} XRP`);
+        console.log(`${chalk.bold('Bridge fee')}: ${chalk.yellow(formatFee(costs.bridgeFee))} XRP`);
     }
     if (costs.totalBridgeCost) {
-        console.log(`${chalk.bold('Bridge cost')}: ${chalk.yellow(costs.totalBridgeCost.toFixed(7))} XRP`);
+        console.log(`${chalk.bold('Bridge cost')}: ${chalk.yellow(formatFee(costs.totalBridgeCost))} XRP`);
     }
     if (costs.totalCost) {
-        console.log(`${chalk.bold('Total cost')}: ${chalk.yellow(costs.totalCost.toFixed(4))} XRP`);
+        console.log(`${chalk.bold('Total cost')}: ${chalk.yellow(formatFee(costs.totalCost))} XRP`);
     }
 }
 
@@ -770,7 +783,8 @@ async function showMetricsMenu(rl: readline.Interface): Promise<void> {
 
     console.log(chalk.bold('📊 Metrics Options:'));
     console.log(` 1) ${chalk.bold('Recompute folder metrics')} ${chalk.dim('(Regenerate metrics for one folder)')}`);
-    console.log(` 2) ${chalk.bold('Recompute all metrics')} ${chalk.dim('(Rebuild all_metrics.csv)')}`);
+    console.log(` 2) ${chalk.bold('Recompute all batch metrics')} ${chalk.dim('(Rebuild all_batches_metrics.csv)')}`);
+    console.log(` 3) ${chalk.bold('Recompute all transaction metrics')} ${chalk.dim('(Rebuild all_tx_metrics.csv)')}`);
 
     while (true) {
         const answer = await askQuestion(rl, '\nEnter your choice: ');
@@ -780,10 +794,13 @@ async function showMetricsMenu(rl: readline.Interface): Promise<void> {
                 await recomputeSpecificFolderMetrics(rl);
                 return;
             case '2':
-                await recomputeAllMetrics();
+                await recomputeAllBatchMetrics();
+                return;
+            case '3':
+                await recomputeAllTxMetrics();
                 return;
             default:
-                console.log(chalk.red('❌ Invalid choice. Please enter 1 or 2.'));
+                console.log(chalk.red('❌ Invalid choice. Please enter 1, 2, or 3.'));
         }
     }
 }
@@ -856,26 +873,50 @@ async function recomputeSpecificFolderMetrics(rl: readline.Interface): Promise<v
 }
 
 /**
- * Recompute all_metrics.csv from all batch folders
+ * Recompute all_batches_metrics.csv from all batch folders
  */
-async function recomputeAllMetrics(): Promise<void> {
-    console.log(chalk.cyan('\n🔄 Recomputing all_metrics.csv from all batch folders...'));
+async function recomputeAllBatchMetrics(): Promise<void> {
+    console.log(chalk.cyan('\n🔄 Recomputing all_batches_metrics.csv from all batch folders...'));
     console.log(chalk.dim('   Scanning all directions (excluding deprecated folders)...\n'));
 
-    const result = recomputeAllMetricsCsv();
+    const result = recomputeAllBatchesCsv();
 
     if (result.count > 0) {
-        console.log(chalk.green(`\n✅ Successfully rebuilt all_metrics.csv`));
-        console.log(chalk.dim(`   File: data/results/all_metrics.csv`));
+        console.log(chalk.green(`\n✅ Successfully rebuilt all_batches_metrics.csv`));
+        console.log(chalk.dim(`   File: data/results/all_batches_metrics.csv`));
 
         console.log(chalk.bold('\n📊 Scan Results:'));
         console.log(chalk.dim('─'.repeat(60)));
         console.log(`   Direction folders:    ${chalk.yellow(result.stats.directions)}`);
         console.log(`   Batch folders:        ${chalk.yellow(result.stats.batches)}`);
-        console.log(`   Metrics processed:    ${chalk.green(result.count)}`);
+        console.log(`   Batch metrics:        ${chalk.green(result.count)}`);
         console.log(chalk.dim('─'.repeat(60)));
     } else {
         console.log(chalk.yellow('\n⚠️  No batch metrics found to process.'));
+    }
+}
+
+/**
+ * Recompute all_tx_metrics.csv from all transaction records
+ */
+async function recomputeAllTxMetrics(): Promise<void> {
+    console.log(chalk.cyan('\n🔄 Recomputing all_tx_metrics.csv from all transaction records...'));
+    console.log(chalk.dim('   Scanning all JSONL files (excluding deprecated folders)...\n'));
+
+    const result = recomputeAllTxCsv();
+
+    if (result.count > 0) {
+        console.log(chalk.green(`\n✅ Successfully rebuilt all_tx_metrics.csv`));
+        console.log(chalk.dim(`   File: data/results/all_tx_metrics.csv`));
+
+        console.log(chalk.bold('\n📊 Scan Results:'));
+        console.log(chalk.dim('─'.repeat(60)));
+        console.log(`   Direction folders:    ${chalk.yellow(result.stats.directions)}`);
+        console.log(`   Batch folders:        ${chalk.yellow(result.stats.batches)}`);
+        console.log(`   Transaction records:  ${chalk.green(result.stats.transactions)}`);
+        console.log(chalk.dim('─'.repeat(60)));
+    } else {
+        console.log(chalk.yellow('\n⚠️  No transaction records found to process.'));
     }
 }
 
