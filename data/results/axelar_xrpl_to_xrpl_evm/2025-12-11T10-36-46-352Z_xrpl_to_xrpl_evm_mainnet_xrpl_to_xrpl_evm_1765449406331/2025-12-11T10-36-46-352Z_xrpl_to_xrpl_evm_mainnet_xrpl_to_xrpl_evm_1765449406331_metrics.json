@@ -1,0 +1,48 @@
+{
+  "summary": {
+    "timestampIso": "2025-12-11T10:40:23.707Z",
+    "tag": "mainnet_xrpl_to_xrpl_evm_1765449406331",
+    "bridgeName": "axelar",
+    "direction": "xrpl_to_xrpl_evm",
+    "transferAmount": 4,
+    "transferAmountUsd": 0,
+    "runsPlanned": 3,
+    "totalRuns": 3,
+    "successCount": 3,
+    "failureCount": 0,
+    "successRate": 1,
+    "latency": {
+      "n": 3,
+      "minMs": 68583,
+      "p50Ms": 73835,
+      "p90Ms": 74022.2,
+      "p95Ms": 74045.59999999999,
+      "maxMs": 74069,
+      "meanMs": 72162.33333333333,
+      "stdDevMs": 2532.773095947514
+    },
+    "costs": {
+      "n": 3,
+      "meanBridgeUsd": 0.42716519999999997,
+      "meanSourceFeeUsd": 0,
+      "meanTargetFeeUsd": 0.123
+    },
+    "batchDurationMs": 217352
+  },
+  "latenciesMs": [
+    74069,
+    73835,
+    68583
+  ],
+  "failureReasons": {},
+  "cfgEcho": {
+    "tag": "mainnet_xrpl_to_xrpl_evm_1765449406331",
+    "direction": "xrpl_to_xrpl_evm",
+    "xrpAmount": 4,
+    "runs": 3,
+    "xrplUrl": "wss://xrplcluster.com/",
+    "evmUrl": "https://rpc.xrplevm.org",
+    "xrplAddress": "rneoLeMEDF3aRzd2ejsEo3MabLsjCnho55",
+    "evmAddress": "0xeF0e7DD8823791927C9685ef946350971A21114E"
+  }
+}

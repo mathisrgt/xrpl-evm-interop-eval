@@ -1,0 +1,46 @@
+{
+  "summary": {
+    "timestampIso": "2025-12-11T13:58:49.140Z",
+    "tag": "mainnet_flare_to_xrpl_1765460328843",
+    "bridgeName": "fasset",
+    "direction": "flare_to_xrpl",
+    "transferAmount": 10,
+    "transferAmountUsd": 0,
+    "runsPlanned": 1,
+    "totalRuns": 1,
+    "successCount": 0,
+    "failureCount": 1,
+    "successRate": 0,
+    "latency": {
+      "n": 0,
+      "minMs": null,
+      "p50Ms": null,
+      "p90Ms": null,
+      "p95Ms": null,
+      "maxMs": null,
+      "meanMs": null,
+      "stdDevMs": null
+    },
+    "costs": {
+      "n": 0,
+      "meanBridgeUsd": null,
+      "meanSourceFeeUsd": null,
+      "meanTargetFeeUsd": null
+    },
+    "batchDurationMs": 1200267
+  },
+  "latenciesMs": [],
+  "failureReasons": {
+    "Timeout: No outgoing FXRP transfer detected within 10 minutes": 1
+  },
+  "cfgEcho": {
+    "tag": "mainnet_flare_to_xrpl_1765460328843",
+    "direction": "flare_to_xrpl",
+    "xrpAmount": 10,
+    "runs": 1,
+    "xrplUrl": "wss://xrplcluster.com/",
+    "evmUrl": "https://rpc.xrplevm.org",
+    "xrplAddress": "rneoLeMEDF3aRzd2ejsEo3MabLsjCnho55",
+    "evmAddress": "0xeF0e7DD8823791927C9685ef946350971A21114E"
+  }
+}

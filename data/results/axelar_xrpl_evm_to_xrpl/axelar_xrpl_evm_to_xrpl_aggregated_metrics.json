@@ -1,34 +1,34 @@
 {
   "summary": {
-    "timestampIso": "2025-12-10T18:49:45.032Z",
+    "timestampIso": "2025-12-11T16:39:22.532Z",
     "tag": "axelar_xrpl_evm_to_xrpl_aggregated",
     "bridgeName": "axelar",
     "direction": "xrpl_evm_to_xrpl",
     "transferAmount": 4,
     "transferAmountUsd": 0,
-    "runsPlanned": 13,
-    "totalRuns": 13,
-    "successCount": 13,
+    "runsPlanned": 50,
+    "totalRuns": 43,
+    "successCount": 43,
     "failureCount": 0,
     "successRate": 1,
     "latency": {
-      "n": 13,
-      "minMs": 57845,
-      "p50Ms": 66873,
-      "p90Ms": 77793.6,
-      "p95Ms": 79392.2,
+      "n": 43,
+      "minMs": 56096,
+      "p50Ms": 64860,
+      "p90Ms": 75001.4,
+      "p95Ms": 77917.3,
       "maxMs": 81419,
-      "meanMs": 68325.61538461539,
-      "stdDevMs": 7623.1676490758855
+      "meanMs": 65776.04651162791,
+      "stdDevMs": 6221.349023504088
     },
     "costs": {
       "n": 0,
       "meanBridgeUsd": null,
-      "meanSourceFeeUsd": 0.193,
-      "meanTargetFeeUsd": 0.342
+      "meanSourceFeeUsd": 0.19,
+      "meanTargetFeeUsd": 0.336
     },
-    "batchDurationMs": 900431
+    "batchDurationMs": 2870899
   },
-  "batchCount": 3,
-  "lastUpdated": "2025-12-10T18:49:45.032Z"
+  "batchCount": 15,
+  "lastUpdated": "2025-12-11T16:39:22.533Z"
 }

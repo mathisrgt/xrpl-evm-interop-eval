@@ -1,0 +1,46 @@
+{
+  "summary": {
+    "timestampIso": "2025-12-11T13:01:51.980Z",
+    "tag": "mainnet_flare_to_xrpl_1765458109498",
+    "bridgeName": "fasset",
+    "direction": "flare_to_xrpl",
+    "transferAmount": 10,
+    "transferAmountUsd": 0,
+    "runsPlanned": 1,
+    "totalRuns": 1,
+    "successCount": 0,
+    "failureCount": 1,
+    "successRate": 0,
+    "latency": {
+      "n": 0,
+      "minMs": null,
+      "p50Ms": null,
+      "p90Ms": null,
+      "p95Ms": null,
+      "maxMs": null,
+      "meanMs": null,
+      "stdDevMs": null
+    },
+    "costs": {
+      "n": 0,
+      "meanBridgeUsd": null,
+      "meanSourceFeeUsd": null,
+      "meanTargetFeeUsd": null
+    },
+    "batchDurationMs": 2459
+  },
+  "latenciesMs": [],
+  "failureReasons": {
+    "HTTP request failed.\n\nStatus: 503\nURL: https://flare-api.flare.network/ext/C/rpc\nRequest body: {\"method\":\"eth_call\",\"params\":[{\"data\":\"0x70a08231000000000000000000000000ef0e7dd8823791927c9685ef946350971a21114e\",\"to\":\"0xAd552A648C74D49E10027AB8a618A3ad4901c5bE\"},\"latest\"]}\n \nRaw Call Arguments:\n  to:    0xAd552A648C74D49E10027AB8a618A3ad4901c5bE\n  data:  0x70a08231000000000000000000000000ef0e7dd8823791927c9685ef946350971a21114e\n \nContract Call:\n  address:   0xAd552A648C74D49E10027AB8a618A3ad4901c5bE\n  function:  balanceOf(address account)\n  args:               (0xeF0e7DD8823791927C9685ef946350971A21114E)\n\nDocs: https://viem.sh/docs/contract/readContract\nDetails: \"upstream connect error or disconnect/reset before headers. reset reason: remote connection failure, transport failure reason: delayed connect error: Connection refused\"\nVersion: viem@2.38.5": 1
+  },
+  "cfgEcho": {
+    "tag": "mainnet_flare_to_xrpl_1765458109498",
+    "direction": "flare_to_xrpl",
+    "xrpAmount": 10,
+    "runs": 1,
+    "xrplUrl": "wss://xrplcluster.com/",
+    "evmUrl": "https://rpc.xrplevm.org",
+    "xrplAddress": "rneoLeMEDF3aRzd2ejsEo3MabLsjCnho55",
+    "evmAddress": "0xeF0e7DD8823791927C9685ef946350971A21114E"
+  }
+}

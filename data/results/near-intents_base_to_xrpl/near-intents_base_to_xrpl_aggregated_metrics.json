@@ -1,34 +1,34 @@
 {
   "summary": {
-    "timestampIso": "2025-12-10T18:54:21.622Z",
+    "timestampIso": "2025-12-11T16:40:33.448Z",
     "tag": "near-intents_base_to_xrpl_aggregated",
     "bridgeName": "near-intents",
     "direction": "base_to_xrpl",
     "transferAmount": 4,
     "transferAmountUsd": 0,
-    "runsPlanned": 17,
-    "totalRuns": 17,
-    "successCount": 17,
+    "runsPlanned": 54,
+    "totalRuns": 44,
+    "successCount": 44,
     "failureCount": 0,
     "successRate": 1,
     "latency": {
-      "n": 17,
-      "minMs": 34435,
-      "p50Ms": 39553,
-      "p90Ms": 50041.600000000006,
-      "p95Ms": 53492.59999999999,
-      "maxMs": 66519,
-      "meanMs": 41251.17647058824,
-      "stdDevMs": 7974.801765821659
+      "n": 44,
+      "minMs": 30831,
+      "p50Ms": 38550,
+      "p90Ms": 50138.8,
+      "p95Ms": 65962.8,
+      "maxMs": 76795,
+      "meanMs": 41026.59090909091,
+      "stdDevMs": 9905.49992845614
     },
     "costs": {
-      "n": 16,
-      "meanBridgeUsd": 0.00375,
+      "n": 43,
+      "meanBridgeUsd": -0.0013255813953488382,
       "meanSourceFeeUsd": null,
       "meanTargetFeeUsd": null
     },
-    "batchDurationMs": 708297
+    "batchDurationMs": 1826769
   },
-  "batchCount": 4,
-  "lastUpdated": "2025-12-10T18:54:21.622Z"
+  "batchCount": 16,
+  "lastUpdated": "2025-12-11T16:40:33.448Z"
 }
