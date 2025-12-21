@@ -104,23 +104,6 @@ export async function createRunRecord(
     // Check if source and target use different currencies (e.g., XRP vs USDC)
     const isCrossCurrency = srcOutput.currency !== trgOutput.currency;
 
-    // Calculate native currency costs
-    // For cross-currency bridges (like Near Intents), we can only calculate fees in USD
-    // Include approval fee if present (for ERC20 token bridges like FAsset)
-    const sourceFee = srcOutput.txFee + (srcOutput.approvalFee || 0);
-    const targetFee = trgOutput.txFee + (trgOutput.approvalFee || 0);
-    const bridgeFee = (isFasset || isCrossCurrency) ? null : (srcOutput.xrpAmount - trgOutput.xrpAmount - gasRefund);
-    const totalBridgeCost = (isFasset || isCrossCurrency) ? null : (srcOutput.xrpAmount + sourceFee - gasRefund - trgOutput.xrpAmount);
-    const totalCost = (isFasset || isCrossCurrency) ? null : (srcOutput.xrpAmount + sourceFee - gasRefund);
-
-    // Convert all costs to USD using prices at transaction time
-    // Use the USD values already in the output if available, otherwise convert
-    let sourceFeeUsd: number | null = null;
-    let targetFeeUsd: number | null = null;
-    let bridgeFeeUsd: number | null = null;
-    let totalBridgeCostUsd: number | null = null;
-    let totalCostUsd: number | null = null;
-
     // Helper function to convert with retry logic
     const convertWithRetry = async (amount: number, currency: string, timestamp: number, description: string): Promise<number | null> => {
         let maxRetries = 3;
@@ -147,88 +130,169 @@ export async function createRunRecord(
         return null;
     };
 
-    // Convert all costs to USD using prices at transaction time
-    // For approval fee, convert separately if not already in USD
-    let sourceApprovalFeeUsd: number | null = null;
-    if (srcOutput.approvalFee) {
-        // Approval fee is typically in the native chain currency (e.g., FLR for Flare)
-        // For Flare, currency would be 'FLR', so we need to specify that
-        const approvalCurrency = 'FLR'; // Approval always pays in native token
-        sourceApprovalFeeUsd = srcOutput.approvalFeeUsd ?? await convertWithRetry(
-            srcOutput.approvalFee,
-            approvalCurrency,
-            srcOutput.submittedAt,
-            'source approval transaction fee'
-        );
-    }
+    // Initialize fee variables
+    let sourceFee: number | null = null;
+    let targetFee: number | null = null;
+    let bridgeFee: number | null = null;
+    let totalBridgeCost: number | null = null;
+    let totalCost: number | null = null;
+    let sourceFeeUsd: number | null = null;
+    let targetFeeUsd: number | null = null;
+    let bridgeFeeUsd: number | null = null;
+    let totalBridgeCostUsd: number | null = null;
+    let totalCostUsd: number | null = null;
 
-    let targetApprovalFeeUsd: number | null = null;
-    if (trgOutput.approvalFee) {
-        // Target approval fee is also typically in the native chain currency (e.g., FLR for Flare)
-        const approvalCurrency = 'FLR'; // Approval always pays in native token
-        targetApprovalFeeUsd = trgOutput.approvalFeeUsd ?? await convertWithRetry(
-            trgOutput.approvalFee,
-            approvalCurrency,
-            trgOutput.finalizedAt,
-            'target approval transaction fee'
-        );
-    }
-
-    // Source fee includes both transaction fee and approval fee
-    sourceFeeUsd = srcOutput.txFeeUsd ?? (
-        srcOutput.currency ? await convertWithRetry(srcOutput.txFee, srcOutput.currency, srcOutput.submittedAt, 'source transaction fee') : null
-    );
-
-    // Add source approval fee in USD if present
-    if (sourceFeeUsd !== null && sourceApprovalFeeUsd !== null) {
-        sourceFeeUsd += sourceApprovalFeeUsd;
-    } else if (sourceApprovalFeeUsd !== null) {
-        sourceFeeUsd = sourceApprovalFeeUsd;
-    }
-
-    // Target fee calculation (transaction fee only, without approval for now)
-    const targetTxFeeOnly = trgOutput.txFee;
-    targetFeeUsd = trgOutput.txFeeUsd ?? (
-        trgOutput.currency ? await convertWithRetry(targetTxFeeOnly, trgOutput.currency, trgOutput.finalizedAt, 'target transaction fee') : null
-    );
-
-    // Add target approval fee in USD if present
-    if (targetFeeUsd !== null && targetApprovalFeeUsd !== null) {
-        targetFeeUsd += targetApprovalFeeUsd;
-    } else if (targetApprovalFeeUsd !== null) {
-        targetFeeUsd = targetApprovalFeeUsd;
-    }
-
-    // For native currency bridge fees (only when same currency)
-    if (bridgeFee !== null && srcOutput.currency) {
-        bridgeFeeUsd = await convertWithRetry(bridgeFee, srcOutput.currency, srcOutput.submittedAt, 'bridge fee');
-    }
-
-    if (totalBridgeCost !== null && srcOutput.currency) {
-        totalBridgeCostUsd = await convertWithRetry(totalBridgeCost, srcOutput.currency, srcOutput.submittedAt, 'total bridge cost');
-    }
-
-    if (totalCost !== null && srcOutput.currency) {
-        totalCostUsd = await convertWithRetry(totalCost, srcOutput.currency, srcOutput.submittedAt, 'total cost');
-    }
-
-    // For cross-currency bridges, calculate USD fees directly from converted amounts
+    // Calculate fees based on currency type
     if (isCrossCurrency || isFasset) {
-        // Convert what was actually sent to USD at send time
+        // For cross-currency bridges, calculate all fees in USD
+        // Convert gas refund to USD if present
+        let gasRefundUsd = 0;
+        if (gasRefund > 0 && srcOutput.currency) {
+            gasRefundUsd = await convertWithRetry(gasRefund, srcOutput.currency, srcOutput.submittedAt, 'gas refund') || 0;
+        }
+
+        // Convert source and target amounts to USD
         const sourceAmountUsd = srcOutput.currency
             ? await convertWithRetry(srcOutput.xrpAmount, srcOutput.currency, srcOutput.submittedAt, 'source amount')
             : null;
 
-        // Convert what was actually received to USD at receive time
         const targetAmountUsd = trgOutput.currency
             ? await convertWithRetry(trgOutput.xrpAmount, trgOutput.currency, trgOutput.finalizedAt, 'target amount')
             : null;
 
-        // Bridge cost = what you sent - what you received (in USD)
+        // Convert transaction fees to USD
+        const sourceTxFeeUsd = srcOutput.txFeeUsd ?? (
+            srcOutput.currency ? await convertWithRetry(srcOutput.txFee, srcOutput.currency, srcOutput.submittedAt, 'source transaction fee') : null
+        );
+
+        const targetTxFeeUsd = trgOutput.txFeeUsd ?? (
+            trgOutput.currency ? await convertWithRetry(trgOutput.txFee, trgOutput.currency, trgOutput.finalizedAt, 'target transaction fee') : null
+        );
+
+        // Convert approval fees to USD if present
+        let sourceApprovalFeeUsd: number | null = null;
+        if (srcOutput.approvalFee) {
+            const approvalCurrency = 'FLR'; // Approval always pays in native token
+            sourceApprovalFeeUsd = srcOutput.approvalFeeUsd ?? await convertWithRetry(
+                srcOutput.approvalFee,
+                approvalCurrency,
+                srcOutput.submittedAt,
+                'source approval transaction fee'
+            );
+        }
+
+        let targetApprovalFeeUsd: number | null = null;
+        if (trgOutput.approvalFee) {
+            const approvalCurrency = 'FLR';
+            targetApprovalFeeUsd = trgOutput.approvalFeeUsd ?? await convertWithRetry(
+                trgOutput.approvalFee,
+                approvalCurrency,
+                trgOutput.finalizedAt,
+                'target approval transaction fee'
+            );
+        }
+
+        // Calculate total fees in USD
+        sourceFeeUsd = sourceTxFeeUsd;
+        if (sourceFeeUsd !== null && sourceApprovalFeeUsd !== null) {
+            sourceFeeUsd += sourceApprovalFeeUsd;
+        } else if (sourceApprovalFeeUsd !== null) {
+            sourceFeeUsd = sourceApprovalFeeUsd;
+        }
+
+        targetFeeUsd = targetTxFeeUsd;
+        if (targetFeeUsd !== null && targetApprovalFeeUsd !== null) {
+            targetFeeUsd += targetApprovalFeeUsd;
+        } else if (targetApprovalFeeUsd !== null) {
+            targetFeeUsd = targetApprovalFeeUsd;
+        }
+
+        // Calculate bridge fees in USD
         if (sourceAmountUsd !== null && targetAmountUsd !== null) {
-            bridgeFeeUsd = sourceAmountUsd - targetAmountUsd;
-            totalBridgeCostUsd = sourceAmountUsd + (sourceFeeUsd || 0) - targetAmountUsd;
-            totalCostUsd = sourceAmountUsd + (sourceFeeUsd || 0);
+            bridgeFeeUsd = sourceAmountUsd - targetAmountUsd - gasRefundUsd;
+            totalBridgeCostUsd = sourceAmountUsd + (sourceFeeUsd || 0) - gasRefundUsd - targetAmountUsd;
+            totalCostUsd = sourceAmountUsd + (sourceFeeUsd || 0) - gasRefundUsd;
+        }
+
+        // For cross-currency bridges, assign USD values to native currency fields as well
+        // This ensures native currency fields are not null but contain USD-denominated values
+        sourceFee = sourceFeeUsd;
+        targetFee = targetFeeUsd;
+        bridgeFee = bridgeFeeUsd;
+        totalBridgeCost = totalBridgeCostUsd;
+        totalCost = totalCostUsd;
+    } else {
+        // For same-currency bridges, calculate in native currency first
+        // Include approval fee if present (for ERC20 token bridges like FAsset)
+        sourceFee = srcOutput.txFee + (srcOutput.approvalFee || 0);
+        targetFee = trgOutput.txFee + (trgOutput.approvalFee || 0);
+        bridgeFee = srcOutput.xrpAmount - trgOutput.xrpAmount - gasRefund;
+        totalBridgeCost = srcOutput.xrpAmount + sourceFee - gasRefund - trgOutput.xrpAmount;
+        totalCost = srcOutput.xrpAmount + sourceFee - gasRefund;
+
+        // Convert all native currency costs to USD using prices at transaction time
+        // For approval fee, convert separately if not already in USD
+        let sourceApprovalFeeUsd: number | null = null;
+        if (srcOutput.approvalFee) {
+            // Approval fee is typically in the native chain currency (e.g., FLR for Flare)
+            // For Flare, currency would be 'FLR', so we need to specify that
+            const approvalCurrency = 'FLR'; // Approval always pays in native token
+            sourceApprovalFeeUsd = srcOutput.approvalFeeUsd ?? await convertWithRetry(
+                srcOutput.approvalFee,
+                approvalCurrency,
+                srcOutput.submittedAt,
+                'source approval transaction fee'
+            );
+        }
+
+        let targetApprovalFeeUsd: number | null = null;
+        if (trgOutput.approvalFee) {
+            // Target approval fee is also typically in the native chain currency (e.g., FLR for Flare)
+            const approvalCurrency = 'FLR'; // Approval always pays in native token
+            targetApprovalFeeUsd = trgOutput.approvalFeeUsd ?? await convertWithRetry(
+                trgOutput.approvalFee,
+                approvalCurrency,
+                trgOutput.finalizedAt,
+                'target approval transaction fee'
+            );
+        }
+
+        // Source fee includes both transaction fee and approval fee
+        sourceFeeUsd = srcOutput.txFeeUsd ?? (
+            srcOutput.currency ? await convertWithRetry(srcOutput.txFee, srcOutput.currency, srcOutput.submittedAt, 'source transaction fee') : null
+        );
+
+        // Add source approval fee in USD if present
+        if (sourceFeeUsd !== null && sourceApprovalFeeUsd !== null) {
+            sourceFeeUsd += sourceApprovalFeeUsd;
+        } else if (sourceApprovalFeeUsd !== null) {
+            sourceFeeUsd = sourceApprovalFeeUsd;
+        }
+
+        // Target fee calculation (transaction fee only, without approval for now)
+        const targetTxFeeOnly = trgOutput.txFee;
+        targetFeeUsd = trgOutput.txFeeUsd ?? (
+            trgOutput.currency ? await convertWithRetry(targetTxFeeOnly, trgOutput.currency, trgOutput.finalizedAt, 'target transaction fee') : null
+        );
+
+        // Add target approval fee in USD if present
+        if (targetFeeUsd !== null && targetApprovalFeeUsd !== null) {
+            targetFeeUsd += targetApprovalFeeUsd;
+        } else if (targetApprovalFeeUsd !== null) {
+            targetFeeUsd = targetApprovalFeeUsd;
+        }
+
+        // Convert native currency bridge fees to USD
+        if (bridgeFee !== null && srcOutput.currency) {
+            bridgeFeeUsd = await convertWithRetry(bridgeFee, srcOutput.currency, srcOutput.submittedAt, 'bridge fee');
+        }
+
+        if (totalBridgeCost !== null && srcOutput.currency) {
+            totalBridgeCostUsd = await convertWithRetry(totalBridgeCost, srcOutput.currency, srcOutput.submittedAt, 'total bridge cost');
+        }
+
+        if (totalCost !== null && srcOutput.currency) {
+            totalCostUsd = await convertWithRetry(totalCost, srcOutput.currency, srcOutput.submittedAt, 'total cost');
         }
     }
 
@@ -254,20 +318,23 @@ export async function createRunRecord(
         }
     };
 
-    // Check all native currency costs (only for same-currency bridges)
-    if (!isCrossCurrency) {
-        if (srcOutput.currency) {
-            await validateNegativeCost(sourceFee, 'source fee', srcOutput.currency);
-            await validateNegativeCost(bridgeFee, 'bridge fee', srcOutput.currency);
-            await validateNegativeCost(totalBridgeCost, 'total bridge cost', srcOutput.currency);
-            await validateNegativeCost(totalCost, 'total cost', srcOutput.currency);
-        }
-        if (trgOutput.currency) {
-            await validateNegativeCost(targetFee, 'target fee', trgOutput.currency);
-        }
+    // Check all native currency costs
+    // For same-currency bridges, validate in native currency
+    // For cross-currency bridges, native fields contain USD values, so validate as USD
+    const nativeCurrency = (isCrossCurrency || isFasset) ? 'USD' : srcOutput.currency;
+    if (nativeCurrency) {
+        await validateNegativeCost(sourceFee, 'source fee', nativeCurrency);
+        await validateNegativeCost(bridgeFee, 'bridge fee', nativeCurrency);
+        await validateNegativeCost(totalBridgeCost, 'total bridge cost', nativeCurrency);
+        await validateNegativeCost(totalCost, 'total cost', nativeCurrency);
+    }
+    if (!isCrossCurrency && !isFasset && trgOutput.currency) {
+        await validateNegativeCost(targetFee, 'target fee', trgOutput.currency);
+    } else if ((isCrossCurrency || isFasset)) {
+        await validateNegativeCost(targetFee, 'target fee', 'USD');
     }
 
-    // Check all USD costs
+    // Check all USD costs (these will be the same as native for cross-currency)
     await validateNegativeCost(sourceFeeUsd, 'source fee (USD)', 'USD');
     await validateNegativeCost(targetFeeUsd, 'target fee (USD)', 'USD');
     await validateNegativeCost(bridgeFeeUsd, 'bridge fee (USD)', 'USD');
